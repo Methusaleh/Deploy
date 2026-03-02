@@ -1,0 +1,156 @@
+
+==================================================
+FILE: .\bundle.py
+==================================================
+import os
+
+# Files to include in the snapshot
+INCLUDE_EXTENSIONS = ('.py', '.env', '.sql', '.txt')
+IGNORE_DIRS = {'.venv', '__pycache__', '.git', 'node_modules'}
+
+def generate_bundle():
+    with open('deploy_snapshot.txt', 'w', encoding='utf-8') as outfile:
+        for root, dirs, files in os.walk('.'):
+            # Skip ignored directories
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+            
+            for file in files:
+                if file.endswith(INCLUDE_EXTENSIONS) and file != 'deploy_snapshot.txt':
+                    file_path = os.path.join(root, file)
+                    outfile.write(f"\n{'='*50}\n")
+                    outfile.write(f"FILE: {file_path}\n")
+                    outfile.write(f"{'='*50}\n")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            outfile.write(f.read())
+                    except Exception as e:
+                        outfile.write(f"Error reading file: {e}")
+    print("✅ deploy_snapshot.txt created! Drag and drop it into the chat.")
+
+if __name__ == "__main__":
+    generate_bundle()
+==================================================
+FILE: .\backend\.env
+==================================================
+# backend/.env
+DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_HDA4wegQ1GLc@ep-dry-heart-aiqsnndv-pooler.c-4.us-east-1.aws.neon.tech/neondb
+==================================================
+FILE: .\backend\app\database.py
+==================================================
+# backend/app/database.py
+import os
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from dotenv import load_dotenv
+
+# Load variables from the .env file in the /backend folder
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# The engine is the entry point for SQLAlchemy to communicate with Neon.
+# We use 'connect_args' to tell the asyncpg driver how to handle SSL.
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=True,  # Set to False in production to reduce terminal noise
+    connect_args={
+        "ssl": True,
+        # This specifically prevents the 'channel_binding' error with Neon's pooler
+        "server_settings": {"search_path": "public"}
+    }
+)
+
+# This factory will create a new AsyncSession for every request to our API.
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+# This is the FastAPI 'Dependency' we will use in our routes.
+# It ensures each request gets its own database connection and closes it when done.
+async def get_db():
+    async with SessionLocal() as session:
+        yield session
+==================================================
+FILE: .\backend\app\main.py
+==================================================
+from fastapi import FastAPI, Depends
+from contextlib import asynccontextmanager
+from .database import engine, get_db
+from .models import Base
+
+# 1. Define the Lifespan logic
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup Logic ---
+    # This creates the tables in Neon if they don't exist
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    yield  # The app stays "alive" here
+    
+    # --- Shutdown Logic (Optional) ---
+    # Any cleanup goes here (closing connections, etc.)
+
+# 2. Pass the lifespan to the FastAPI instance
+app = FastAPI(
+    title="Deploy",
+    description="Kanban Board for Software Development",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+@app.get("/")
+async def health_check():
+    return {"status": "online", "message": "Deploy API is running"}
+==================================================
+FILE: .\backend\app\models.py
+==================================================
+from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy.orm import DeclarativeBase, validates
+from datetime import datetime
+import re
+
+class Base(DeclarativeBase):
+    pass
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    
+    # The generated handle (e.g., @aaron_kipf)
+    handle = Column(String, unique=True, index=True, nullable=False)
+    
+    # Audit timestamps for that "Enterprise" feel
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    @validates('handle')
+    def validate_handle(self, key, value):
+        # If we didn't manually set a handle, generate it from names
+        if not value and self.first_name and self.last_name:
+            # Lowercase and replace spaces/special chars with underscores
+            clean_first = re.sub(r'\W+', '', self.first_name.lower())
+            clean_last = re.sub(r'\W+', '', self.last_name.lower())
+            return f"@{clean_first}_{clean_last}"
+        return value
+==================================================
+FILE: .\backend\app\utils.py
+==================================================
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    """Hash a plaintext password using bcrypt."""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against a hashed password."""
+    return pwd_context.verify(plain_password, hashed_password)
+
