@@ -1,7 +1,7 @@
 import os
 
 # Files to include in the snapshot
-INCLUDE_EXTENSIONS = ('.py', '.env', '.sql', '.txt')
+INCLUDE_EXTENSIONS = ('.py', '.sql', '.txt')
 IGNORE_DIRS = {'.venv', '__pycache__', '.git', 'node_modules'}
 
 def generate_bundle():
