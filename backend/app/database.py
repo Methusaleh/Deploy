@@ -3,13 +3,10 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from dotenv import load_dotenv
 
-# Load variables from the .env file in the /backend folder
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# The engine is the entry point for SQLAlchemy to communicate with Neon.
-# We use 'connect_args' to tell the asyncpg driver how to handle SSL.
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Set to False in production to reduce terminal noise

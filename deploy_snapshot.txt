@@ -5,7 +5,7 @@ FILE: .\bundle.py
 import os
 
 # Files to include in the snapshot
-INCLUDE_EXTENSIONS = ('.py', '.env', '.sql', '.txt')
+INCLUDE_EXTENSIONS = ('.py', '.sql', '.txt')
 IGNORE_DIRS = {'.venv', '__pycache__', '.git', 'node_modules'}
 
 def generate_bundle():
@@ -30,10 +30,101 @@ def generate_bundle():
 if __name__ == "__main__":
     generate_bundle()
 ==================================================
-FILE: .\backend\.env
+FILE: .\socket_test.py
 ==================================================
-# backend/.env
-DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_HDA4wegQ1GLc@ep-dry-heart-aiqsnndv-pooler.c-4.us-east-1.aws.neon.tech/neondb
+import asyncio
+import socketio
+
+sio = socketio.AsyncClient()
+
+@sio.event
+async def connect():
+    print("✅ Connected to Server!")
+    # Simulate joining Board #1
+    await sio.emit('join_board', 2)
+
+@sio.on('card_updated')
+async def on_card_updated(data):
+    print(f"🚀 REAL-TIME UPDATE RECEIVED: {data}")
+
+async def main():
+    await sio.connect('http://127.0.0.1:8000')
+    await sio.wait()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+==================================================
+FILE: .\backend\app\crud.py
+==================================================
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from .models import User, Board, Card
+
+# search funtion by handle
+async def get_user_by_handle(db: AsyncSession, handle: str):
+    query = select(User).where(User.handle == handle)
+    
+    result = await db.execute(query)
+    
+    return result.scalars().first()
+
+async def create_board(db: AsyncSession, title: str, owner_id: int):
+    db_board = Board(title=title, owner_id=owner_id)
+    db.add(db_board)
+    await db.commit()
+    await db.refresh(db_board)
+    return db_board
+
+async def create_card(db: AsyncSession, title: str, board_id: int, description: str = None):
+    db_card = Card(title=title, board_id=board_id, description=description)
+    db.add(db_card)
+    await db.commit()
+    await db.refresh(db_card)
+    return db_card
+
+async def get_boards_by_user(db: AsyncSession, user_id: int):
+    query = select(Board).where(Board.owner_id == user_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+async def get_cards_by_board(db: AsyncSession, board_id: int):
+    query = select(Card).where(Card.board_id == board_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+async def update_card_status(db: AsyncSession, card_id: int, new_status: str):
+    query = select(Card).where(Card.id == card_id)
+    result = await db.execute(query)
+    db_card = result.scalars().first()
+    
+    if db_card:
+        db_card.status = new_status
+        await db.commit()
+        await db.refresh(db_card)
+        return db_card
+    return db_card
+
+async def delete_board(db: AsyncSession, board_id: int):
+    query = select(Board).where(Board.id == board_id)
+    result = await db.execute(query)
+    db_board = result.scalars().first()
+    
+    if db_board:
+        await db.delete(db_board)
+        await db.commit()
+        return True
+    return False
+
+async def delete_card(db: AsyncSession, card_id: int):
+    query = select(Card).where(Card.id == card_id)
+    result = await db.execute(query)
+    db_card = result.scalars().first()
+    
+    if db_card:
+        await db.delete(db_card)
+        await db.commit()
+        return True
+    return False
 ==================================================
 FILE: .\backend\app\database.py
 ==================================================
@@ -42,13 +133,10 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from dotenv import load_dotenv
 
-# Load variables from the .env file in the /backend folder
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# The engine is the entry point for SQLAlchemy to communicate with Neon.
-# We use 'connect_args' to tell the asyncpg driver how to handle SSL.
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Set to False in production to reduce terminal noise
@@ -74,16 +162,20 @@ async def get_db():
 ==================================================
 FILE: .\backend\app\main.py
 ==================================================
-from fastapi import FastAPI, Depends
+import socketio
+from fastapi import FastAPI, Depends, HTTPException  
 from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
 from .database import engine, get_db
 from .models import Base
+from . import crud
+
+
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Startup Logic ---
-    # This creates the tables in Neon if they don't exist
+    # creates the tables in Neon if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
@@ -92,22 +184,100 @@ async def lifespan(app: FastAPI):
     # --- Shutdown Logic (Optional) ---
     # Any cleanup goes here (closing connections, etc.)
 
-# 2. Pass the lifespan to the FastAPI instance
+# lifespan
 app = FastAPI(
-    title="Deploy",
+    title="Deploy - V2",
     description="Kanban Board for Software Development",
     version="1.0.0",
     lifespan=lifespan
 )
 
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+
+socket_app = socketio.ASGIApp(sio, app)
+
+@sio.event
+async def connect(sid, environ):
+    print(f"Client connected: {sid}")
+
+@sio.event
+async def join_board(sid, board_id):
+    sio.enter_room(sid, str(board_id))
+    print(f"Client {sid} joined board {board_id}")
+
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Deploy API is running"}
+
+@app.get("/test-user/{handle}")
+async def test_user_connection(handle: str, db: AsyncSession = Depends(get_db)):
+    # Use the CRUD function to find the user
+    user = await crud.get_user_by_handle(db, handle)
+    
+    # If the librarian finds nothing, tell the user
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found in Neon")
+    
+    # If found, return the info (but NOT the password hash!)
+    return {
+        "message": "Connection Successful!",
+        "user": {
+            "name": f"{user.first_name} {user.last_name}",
+            "handle": user.handle,
+            "email": user.email
+        }
+    }
+
+@app.post("/boards/")
+async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_db)):
+    return await crud.create_board(db=db, title=title, owner_id=owner_id)
+
+@app.post("/cards/")
+async def post_card(title: str, board_id: int, description: str = None, db: AsyncSession = Depends(get_db)):
+    return await crud.create_card(db=db, title=title, board_id=board_id, description=description)
+
+@app.get("/users/{user_id}/boards/") #set this up for websocket logic later
+async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
+    boards = await crud.get_boards_by_user(db, user_id)
+    return boards
+@app.get("/boards/{board_id}/cards/")
+async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
+    cards = await crud.get_cards_by_board(db, board_id)
+    return cards
+
+@app.patch("/cards/{card_id}/status/")
+async def update_card_status(card_id: int, new_status: str, db: AsyncSession = Depends(get_db)):
+    updated_card = await crud.update_card_status(db, card_id, new_status)
+    if not updated_card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    await sio.emit("card_updated", {
+        "card_id": card_id,
+        "status": new_status},
+        room=str(updated_card.board_id)
+    )
+
+    return updated_card
+    
+
+@app.delete("/boards/{board_id}/")
+async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
+    success = await crud.delete_board(db, board_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Board not found")
+    return {"message": f"Board {board_id} and its cards deleted successfully"}
+
+@app.delete("/cards/{card_id}/")
+async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
+    success = await crud.delete_card(db, card_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return {"message": f"Card {card_id} deleted successfully"}
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
-from sqlalchemy import Column, Integer, String, DateTime, func
-from sqlalchemy.orm import DeclarativeBase, validates
+from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
 
@@ -122,23 +292,41 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    
-    # The generated handle (e.g., @aaron_kipf)
     handle = Column(String, unique=True, index=True, nullable=False)
-    
-    # Audit timestamps for that "Enterprise" feel
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    boards = relationship("Board", back_populates="owner", cascade="all, delete-orphan")
+
     @validates('handle')
     def validate_handle(self, key, value):
-        # If we didn't manually set a handle, generate it from names
         if not value and self.first_name and self.last_name:
-            # Lowercase and replace spaces/special chars with underscores
             clean_first = re.sub(r'\W+', '', self.first_name.lower())
             clean_last = re.sub(r'\W+', '', self.last_name.lower())
             return f"@{clean_first}_{clean_last}"
         return value
+    
+class Board(Base):
+    __tablename__ = "boards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"))
+
+    owner = relationship("User", back_populates="boards")
+
+    cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
+
+class Card(Base):
+    __tablename__ = "cards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    status = Column(String, default="Backlog")
+    board_id = Column(Integer, ForeignKey("boards.id"))
+    
+    board = relationship("Board", back_populates="cards")
 ==================================================
 FILE: .\backend\app\utils.py
 ==================================================
