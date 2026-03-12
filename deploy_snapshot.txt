@@ -30,30 +30,6 @@ def generate_bundle():
 if __name__ == "__main__":
     generate_bundle()
 ==================================================
-FILE: .\socket_test.py
-==================================================
-import asyncio
-import socketio
-
-sio = socketio.AsyncClient()
-
-@sio.event
-async def connect():
-    print("✅ Connected to Server!")
-    # Simulate joining Board #1
-    await sio.emit('join_board', 2)
-
-@sio.on('card_updated')
-async def on_card_updated(data):
-    print(f"🚀 REAL-TIME UPDATE RECEIVED: {data}")
-
-async def main():
-    await sio.connect('http://127.0.0.1:8000')
-    await sio.wait()
-
-if __name__ == '__main__':
-    asyncio.run(main())
-==================================================
 FILE: .\backend\app\crud.py
 ==================================================
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -202,7 +178,7 @@ async def connect(sid, environ):
 
 @sio.event
 async def join_board(sid, board_id):
-    sio.enter_room(sid, str(board_id))
+    await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
 @app.get("/")
