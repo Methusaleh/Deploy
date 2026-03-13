@@ -1,3 +1,12 @@
+:root {
+  --bg-main: #121212;
+  --bg-secondary: #181818;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8a8a8a;
+  --accent-cyan: #00f5ff;
+  --border-subtle: #262626;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,19 +14,21 @@
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  overflow: hidden; /* Prevents double scrollbars */
 }
 
 .app-container {
-  display: flex; /* This puts the sidebar and main content side-by-side */
+  display: flex;
   height: 100vh;
   width: 100vw;
 }
 
-.board-view {
-  flex: 1; /* This makes the main content take up all remaining space */
-  padding: 2rem;
-  background-color: #ffffff;
+/* We'll use this class for the dimming effect later */
+.dimmed {
+  filter: brightness(0.5);
+  pointer-events: none;
+  transition: filter 0.3s ease;
 }

@@ -46,6 +46,7 @@ class Card(Base):
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
+    priority = Column(String, default="low")
     board_id = Column(Integer, ForeignKey("boards.id"))
     
     board = relationship("Board", back_populates="cards")

@@ -1,22 +1,21 @@
 import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
+import Board from "./components/Board";
+import Drawer from "./components/Drawer";
 
 function App() {
-  const { activeBoard, status } = useBoards();
+  const { status, selectedCard } = useBoards();
 
-  if (status === "loading") return <div>Loading...</div>;
+  if (status === "loading")
+    return <div className="loading-screen">Loading...</div>;
 
   return (
     <div className="app-container">
       <Sidebar />
-      <main className="board-view">
-        {activeBoard ? (
-          <h1>{activeBoard.title}</h1>
-        ) : (
-          <h1>Select a board to start</h1>
-        )}
-        {/*Board Component will go here*/}
+      <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
+        <Board />
       </main>
+      <Drawer />
     </div>
   );
 }

@@ -10,6 +10,7 @@ const initialState = {
   activeBoard: null,
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
+  selectedCard: null,
 };
 
 function reducer(state, action) {
@@ -22,6 +23,10 @@ function reducer(state, action) {
       return { ...state, activeBoard: action.payload, cards: [] };
     case "setCards":
       return { ...state, cards: action.payload };
+    case "selectCard":
+      return { ...state, selectedCard: action.payload };
+    case "closeDrawer":
+      return { ...state, selectedCard: null };
     case "error":
       return { ...state, status: "error" };
     default:

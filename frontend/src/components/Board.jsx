@@ -8,13 +8,21 @@ function Board() {
 
   const { id } = activeBoard || {};
 
+  const COLUMNS = [
+    { id: "backlog", title: "Backlog" },
+    { id: "design", title: "Design" },
+    { id: "development", title: "Development" },
+    { id: "testing", title: "Testing" },
+    { id: "deploy", title: "Deploy" },
+  ];
+
   useEffect(
     function () {
-      if (!activeBoard) return;
+      if (!id) return;
       async function fetchCards() {
         try {
           dispatch({ type: "loading" });
-          const data = await getBoardCards(activeBoard.id);
+          const data = await getBoardCards(id);
           dispatch({ type: "setCards", payload: data });
         } catch (err) {
           dispatch({ type: "error", payload: err.message });
@@ -23,7 +31,7 @@ function Board() {
 
       fetchCards();
     },
-    [activeBoard?.id, dispatch],
+    [id, dispatch],
   );
 
   if (!activeBoard) {
@@ -45,7 +53,13 @@ function Board() {
       </header>
 
       <div className={styles.grid}>
-        {/* {cards.map((card) => ( */}
+        {COLUMNS.map((column) => {
+          const columnCards = cards.filter((card) => card.status === column.id);
+
+          return (
+            <Column key={column.id} title={column.title} cards={columnCards} />
+          );
+        })}
         <p>Cards found: {cards.length}</p>
       </div>
     </div>

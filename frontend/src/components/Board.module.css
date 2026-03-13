@@ -1,0 +1,37 @@
+.boardContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-main); /* #121212 */
+}
+
+.header {
+  padding: 2rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.grid {
+  display: flex;
+  flex: 1;
+  padding: 1.5rem;
+  gap: 1.5rem;
+  overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
+  align-items: flex-start;
+}
+
+/* Custom scrollbar for that premium dark-mode feel */
+.grid::-webkit-scrollbar {
+  height: 8px;
+}
+
+.grid::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
