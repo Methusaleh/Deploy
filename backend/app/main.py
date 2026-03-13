@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from .database import engine, get_db
 from .models import Base
 from . import crud
@@ -122,3 +123,22 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Card not found")
     return {"message": f"Card {card_id} deleted successfully"}
+
+@app.put("/cards/{card_id}")
+def update_card(card_id: int, updated_data: dict, db: Session = Depends(get_db)):
+    card = db.query(models.Card).filter(models.Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    if "title" in updated_data:
+        card.title = updated_data["title"]
+    if "description" in updated_data:
+        card.description = updated_data["description"]
+    if "status" in updated_data:
+        card.status = updated_data["status"]
+    if "priority" in updated_data:
+        card.priority = updated_data["priority"]
+
+    db.commit()
+    db.refresh(card)
+    return card

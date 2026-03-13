@@ -4,23 +4,22 @@ FILE: ./frontend/src\App.jsx
 ==================================================
 import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
+import Board from "./components/Board";
+import Drawer from "./components/Drawer";
 
 function App() {
-  const { activeBoard, status } = useBoards();
+  const { status, selectedCard } = useBoards();
 
-  if (status === "loading") return <div>Loading...</div>;
+  if (status === "loading")
+    return <div className="loading-screen">Loading...</div>;
 
   return (
     <div className="app-container">
       <Sidebar />
-      <main className="board-view">
-        {activeBoard ? (
-          <h1>{activeBoard.title}</h1>
-        ) : (
-          <h1>Select a board to start</h1>
-        )}
-        {/*Board Component will go here*/}
+      <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
+        <Board />
       </main>
+      <Drawer />
     </div>
   );
 }
@@ -226,6 +225,279 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\Card.jsx
+==================================================
+import styles from "./Card.module.css";
+
+function Card({ card, dispatch }) {
+  const priorityStyle = styles[card.priority?.toLowerCase()] || styles.low;
+  return (
+    <div
+      className={styles.card}
+      onClick={() => dispatch({ type: "selectCard", payload: card })}
+    >
+      <div className={styles.content}>
+        <h3 className={styles.cardTitle}>{card.title}</h3>
+        {card.description && (
+          <p className={styles.description}>{card.description}</p>
+        )}
+      </div>
+
+      <div className={styles.footer}>
+        {/* Neon accent indicator for priority */}
+        <span className={`${styles.badge} ${priorityStyle}`}>
+          {card.priority || "Low"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default Card;
+
+==================================================
+FILE: ./frontend/src\components\Card.module.css
+==================================================
+.card {
+  background-color: #1c1c1c;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1.2rem;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* Premium Hover: Subtle lift and shadow pulse */
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #333;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.cardTitle {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Truncates long text to 2 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.footer {
+  margin-top: 1.2rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Neon Priority Accents using the variables from index.css */
+.high {
+  color: #ff007f; /* Magenta */
+  box-shadow: inset 0 0 4px rgba(255, 0, 127, 0.2);
+}
+
+.medium {
+  color: #39ff14; /* Neon Green */
+  box-shadow: inset 0 0 4px rgba(57, 255, 20, 0.2);
+}
+
+.low {
+  color: var(--accent-cyan);
+  box-shadow: inset 0 0 4px rgba(0, 245, 255, 0.2);
+}
+
+==================================================
+FILE: ./frontend/src\components\Column.jsx
+==================================================
+import Card from "./Card";
+import styles from "./Column.module.css";
+
+function Column({ title, cards }) {
+  return (
+    <div className={styles.column}>
+      <div className={styles.header}>
+        <h2 className={styles.title}>{title}</h2>
+        <span className={styles.count}>{cards.length}</span>
+      </div>
+
+      <div className={styles.cardList}>
+        {cards.map((card) => (
+          <Card key={card.id} card={card} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default Column;
+
+==================================================
+FILE: ./frontend/src\components\Column.module.css
+==================================================
+.column {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0.5rem 1.5rem 0.5rem;
+}
+
+.title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: #222;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.2rem;
+  /* Allows scrolling inside a column if it gets too long */
+  overflow-y: auto;
+}
+
+==================================================
+FILE: ./frontend/src\components\Drawer.jsx
+==================================================
+import { useBoards } from "../context/BoardContext";
+import styles from "./Drawer.module.css";
+
+function Drawer() {
+  const { selectedCard, dispatch } = useBoards();
+
+  const isOpen = !!selectedCard;
+
+  return (
+    <>
+      <div
+        className={`${styles.overlay} ${isOpen ? styles.show : ""}`}
+        onClick={() => dispatch({ type: "closeDrawer" })}
+      />
+
+      <aside className={`${styles.drawer} ${isOpen ? styles.open : ""}`}>
+        <div className={styles.header}>
+          <button
+            className={styles.closeBtn}
+            onClick={() => dispatch({ type: "closeDrawer" })}
+          >
+            &times;
+          </button>
+        </div>
+
+        {selectedCard && (
+          <div className={styles.content}>
+            <span className={styles.statusBadge}>{selectedCard.status}</span>
+            <h2 className={styles.title}>{selectedCard.title}</h2>
+            <p className={styles.description}>
+              {selectedCard.description} || "No description provided."
+            </p>
+            {/* Later: Add Edit Form here */}
+          </div>
+        )}
+      </aside>
+    </>
+  );
+}
+
+export default Drawer;
+
+==================================================
+FILE: ./frontend/src\components\Drawer.module.css
+==================================================
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 450px;
+  height: 100vh;
+  background-color: #181818;
+  border-left: 1px solid var(--border-subtle);
+  z-index: 1000;
+  padding: 2rem;
+  /* Start off-screen */
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer.open {
+  transform: translateX(0);
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 999;
+}
+
+.overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.title {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  margin-top: 1rem;
+}
+
+.description {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-top: 1.5rem;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 2rem;
+  cursor: pointer;
+}
+
+==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
 import { useBoards } from "../context/BoardContext";
@@ -313,6 +585,7 @@ const initialState = {
   activeBoard: null,
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
+  selectedCard: null,
 };
 
 function reducer(state, action) {
@@ -325,6 +598,10 @@ function reducer(state, action) {
       return { ...state, activeBoard: action.payload, cards: [] };
     case "setCards":
       return { ...state, cards: action.payload };
+    case "selectCard":
+      return { ...state, selectedCard: action.payload };
+    case "closeDrawer":
+      return { ...state, selectedCard: null };
     case "error":
       return { ...state, status: "error" };
     default:

@@ -54,3 +54,93 @@
   font-size: 2rem;
   cursor: pointer;
 }
+
+.editGroup {
+  margin-bottom: 2rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-bottom: 0.5rem;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  background-color: var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+
+  /* Fix: Prevents the text-edit cursor on non-editable fields */
+  cursor: default;
+  user-select: none;
+}
+
+.titleInput {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  padding: 4px 8px;
+  margin-left: -8px;
+  cursor: text;
+  transition: border-color 0.2s;
+}
+
+.titleInput:focus {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent-cyan);
+}
+
+.titleInput:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-subtle);
+}
+
+.descInput {
+  width: 100%;
+  height: 200px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 0.8rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.descInput:focus {
+  border-color: #444;
+}
+
+.saveBtn {
+  width: 100%;
+  padding: 0.8rem;
+  background-color: var(--accent-cyan);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

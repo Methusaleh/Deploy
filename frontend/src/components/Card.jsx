@@ -1,6 +1,8 @@
+import { useBoards } from "../context/BoardContext";
 import styles from "./Card.module.css";
 
-function Card({ card, dispatch }) {
+function Card({ card }) {
+  const { dispatch } = useBoards();
   const priorityStyle = styles[card.priority?.toLowerCase()] || styles.low;
   return (
     <div

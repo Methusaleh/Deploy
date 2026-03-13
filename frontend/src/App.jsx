@@ -4,10 +4,11 @@ import Board from "./components/Board";
 import Drawer from "./components/Drawer";
 
 function App() {
-  const { status, selectedCard } = useBoards();
+  const { status, boards, selectedCard } = useBoards();
 
-  if (status === "loading")
+  if (status === "loading" && boards.length === 0) {
     return <div className="loading-screen">Loading...</div>;
+  }
 
   return (
     <div className="app-container">

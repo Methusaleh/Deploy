@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useBoards } from "../context/BoardContext";
 import { getBoardCards } from "../api/boards";
+import Column from "./Column";
 import styles from "./Board.module.css";
 
 function Board() {
@@ -49,7 +50,10 @@ function Board() {
   return (
     <div className={styles.boardContainer}>
       <header className={styles.header}>
-        <h1>{activeBoard.title}</h1>
+        <div className={styles.headerMain}>
+          <h1>{activeBoard.title}</h1>
+          <span className={styles.totalCount}>{cards.length} Cards</span>
+        </div>
       </header>
 
       <div className={styles.grid}>
@@ -60,7 +64,6 @@ function Board() {
             <Column key={column.id} title={column.title} cards={columnCards} />
           );
         })}
-        <p>Cards found: {cards.length}</p>
       </div>
     </div>
   );

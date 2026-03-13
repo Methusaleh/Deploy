@@ -30,6 +30,416 @@ def generate_bundle():
 if __name__ == "__main__":
     generate_bundle()
 ==================================================
+FILE: .\bundle_frontend.py
+==================================================
+import os
+
+# 1. Focus on React and CSS files
+INCLUDE_EXTENSIONS = ('.jsx', '.js', '.css', '.html')
+# 2. Start looking specifically inside the frontend source
+START_DIR = './frontend/src'
+IGNORE_DIRS = {'node_modules', '.git', '__pycache__'}
+
+def generate_frontend_bundle():
+    # Name it differently so it doesn't overwrite your full backend snapshot
+    output_file = 'frontend_snapshot.txt'
+    
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        # Check if directory exists before walking
+        if not os.path.exists(START_DIR):
+            print(f"❌ Error: {START_DIR} not found. Make sure you're in the project root.")
+            return
+
+        for root, dirs, files in os.walk(START_DIR):
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+            
+            for file in files:
+                if file.endswith(INCLUDE_EXTENSIONS):
+                    file_path = os.path.join(root, file)
+                    outfile.write(f"\n{'='*50}\n")
+                    outfile.write(f"FILE: {file_path}\n")
+                    outfile.write(f"{'='*50}\n")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            outfile.write(f.read())
+                    except Exception as e:
+                        outfile.write(f"Error reading file: {e}")
+                        
+    print(f"✅ {output_file} created! This contains only your React UI code.")
+
+if __name__ == "__main__":
+    generate_frontend_bundle()
+==================================================
+FILE: .\frontend_snapshot.txt
+==================================================
+
+==================================================
+FILE: ./frontend/src\App.jsx
+==================================================
+import { useBoards } from "./context/BoardContext";
+import Sidebar from "./components/Sidebar";
+
+function App() {
+  const { activeBoard, status } = useBoards();
+
+  if (status === "loading") return <div>Loading...</div>;
+
+  return (
+    <div className="app-container">
+      <Sidebar />
+      <main className="board-view">
+        {activeBoard ? (
+          <h1>{activeBoard.title}</h1>
+        ) : (
+          <h1>Select a board to start</h1>
+        )}
+        {/*Board Component will go here*/}
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+==================================================
+FILE: ./frontend/src\index.css
+==================================================
+:root {
+  --bg-main: #121212;
+  --bg-secondary: #181818;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8a8a8a;
+  --accent-cyan: #00f5ff;
+  --border-subtle: #262626;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  overflow: hidden; /* Prevents double scrollbars */
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* We'll use this class for the dimming effect later */
+.dimmed {
+  filter: brightness(0.5);
+  pointer-events: none;
+  transition: filter 0.3s ease;
+}
+
+==================================================
+FILE: ./frontend/src\main.jsx
+==================================================
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import App from "./App.jsx";
+import { BoardProvider } from "./context/BoardContext.jsx";
+
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <BoardProvider>
+      <App />
+    </BoardProvider>
+  </StrictMode>,
+);
+
+==================================================
+FILE: ./frontend/src\api\boards.js
+==================================================
+import apiCLient from "./client";
+
+export const getBoards = async (userId) => {
+  const res = await apiCLient.get(`/users/${userId}/boards/`);
+  return res.data;
+};
+
+export const getBoardCards = async (boardId) => {
+  const res = await apiCLient.get(`/boards/${boardId}/cards/`);
+  return res.data;
+};
+
+==================================================
+FILE: ./frontend/src\api\client.js
+==================================================
+import axios from "axios";
+
+const apiClient = axios.create({
+  baseURL: "http://127.0.0.1:8000",
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+export default apiClient;
+
+==================================================
+FILE: ./frontend/src\components\Board.jsx
+==================================================
+import { useEffect } from "react";
+import { useBoards } from "../context/BoardContext";
+import { getBoardCards } from "../api/boards";
+import styles from "./Board.module.css";
+
+function Board() {
+  const { activeBoard, cards, status, dispatch } = useBoards();
+
+  const { id } = activeBoard || {};
+
+  const COLUMNS = [
+    { id: "backlog", title: "Backlog" },
+    { id: "design", title: "Design" },
+    { id: "development", title: "Development" },
+    { id: "testing", title: "Testing" },
+    { id: "deploy", title: "Deploy" },
+  ];
+
+  useEffect(
+    function () {
+      if (!id) return;
+      async function fetchCards() {
+        try {
+          dispatch({ type: "loading" });
+          const data = await getBoardCards(id);
+          dispatch({ type: "setCards", payload: data });
+        } catch (err) {
+          dispatch({ type: "error", payload: err.message });
+        }
+      }
+
+      fetchCards();
+    },
+    [id, dispatch],
+  );
+
+  if (!activeBoard) {
+    return (
+      <section className={styles.empty}>
+        <p>Select a board from the sidebar to get started</p>
+      </section>
+    );
+  }
+
+  if (status === "loading" && cards.length === 0) {
+    return <p className={styles.message}>Loading cards...</p>;
+  }
+
+  return (
+    <div className={styles.boardContainer}>
+      <header className={styles.header}>
+        <h1>{activeBoard.title}</h1>
+      </header>
+
+      <div className={styles.grid}>
+        {COLUMNS.map((column) => {
+          const columnCards = cards.filter((card) => card.status === column.id);
+
+          return (
+            <Column key={column.id} title={column.title} cards={columnCards} />
+          );
+        })}
+        <p>Cards found: {cards.length}</p>
+      </div>
+    </div>
+  );
+}
+
+export default Board;
+
+==================================================
+FILE: ./frontend/src\components\Board.module.css
+==================================================
+.boardContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-main); /* #121212 */
+}
+
+.header {
+  padding: 2rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.grid {
+  display: flex;
+  flex: 1;
+  padding: 1.5rem;
+  gap: 1.5rem;
+  overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
+  align-items: flex-start;
+}
+
+/* Custom scrollbar for that premium dark-mode feel */
+.grid::-webkit-scrollbar {
+  height: 8px;
+}
+
+.grid::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
+
+==================================================
+FILE: ./frontend/src\components\Sidebar.jsx
+==================================================
+import { useBoards } from "../context/BoardContext";
+import styles from "./Sidebar.module.css";
+
+function Sidebar() {
+  const { boards, activeBoard, dispatch } = useBoards();
+
+  return (
+    <aside className={styles.sidebar}>
+      <h2>My Boards</h2>
+      <ul>
+        {boards.map((board) => (
+          <li
+            key={board.id}
+            className={`${styles.li} ${activeBoard?.id === board.id ? styles.active : ""}`}
+            onClick={() => dispatch({ type: "setActiveBoard", payload: board })}
+          >
+            {board.title}
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+export default Sidebar;
+
+==================================================
+FILE: ./frontend/src\components\Sidebar.module.css
+==================================================
+.sidebar {
+  width: 260px;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+}
+
+.sidebar h2 {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 2rem;
+}
+
+.sidebar ul {
+  list-style: none;
+}
+
+.sidebar li {
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.sidebar li:hover {
+  background-color: #222222;
+  color: var(--text-primary);
+}
+
+.sidebar li.active {
+  background-color: #1e1e1e;
+  color: var(--accent-cyan);
+  box-shadow: inset 2px 0 0 var(--accent-cyan);
+}
+
+==================================================
+FILE: ./frontend/src\context\BoardContext.jsx
+==================================================
+/* eslint-disable react-refresh/only-export-components */
+
+import { createContext, useContext, useReducer, useEffect } from "react";
+import { getBoards } from "../api/boards";
+
+const BoardContext = createContext();
+
+const initialState = {
+  boards: [],
+  activeBoard: null,
+  status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
+  cards: [],
+};
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "loading":
+      return { ...state, status: "loading" };
+    case "boardsLoaded":
+      return { ...state, boards: action.payload, status: "ready" };
+    case "setActiveBoard":
+      return { ...state, activeBoard: action.payload, cards: [] };
+    case "setCards":
+      return { ...state, cards: action.payload };
+    case "error":
+      return { ...state, status: "error" };
+    default:
+      throw new Error("Unknown action type");
+  }
+}
+
+function BoardProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Load boards on startup
+  useEffect(() => {
+    async function loadBoards() {
+      dispatch({ type: "loading" });
+      try {
+        const data = await getBoards(1);
+        dispatch({ type: "boardsLoaded", payload: data });
+      } catch {
+        dispatch({ type: "error" });
+      }
+    }
+    loadBoards();
+  }, []);
+
+  return (
+    <BoardContext.Provider value={{ ...state, dispatch }}>
+      {children}
+    </BoardContext.Provider>
+  );
+}
+
+function useBoards() {
+  const context = useContext(BoardContext);
+  if (context === undefined)
+    throw new Error("useBoards used outside of Provider");
+  return context;
+}
+
+export { BoardProvider, useBoards };
+
+==================================================
 FILE: .\backend\app\crud.py
 ==================================================
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,7 +549,8 @@ async def get_db():
 FILE: .\backend\app\main.py
 ==================================================
 import socketio
-from fastapi import FastAPI, Depends, HTTPException  
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from .database import engine, get_db
@@ -167,6 +578,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],)
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 
@@ -300,6 +723,7 @@ class Card(Base):
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
+    priority = Column(String, default="low")
     board_id = Column(Integer, ForeignKey("boards.id"))
     
     board = relationship("Board", back_populates="cards")

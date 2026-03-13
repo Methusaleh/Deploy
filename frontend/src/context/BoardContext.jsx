@@ -22,7 +22,7 @@ function reducer(state, action) {
     case "setActiveBoard":
       return { ...state, activeBoard: action.payload, cards: [] };
     case "setCards":
-      return { ...state, cards: action.payload };
+      return { ...state, cards: action.payload, status: "ready" };
     case "selectCard":
       return { ...state, selectedCard: action.payload };
     case "closeDrawer":
