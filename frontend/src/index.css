@@ -1,0 +1,23 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+.app-container {
+  display: flex; /* This puts the sidebar and main content side-by-side */
+  height: 100vh;
+  width: 100vw;
+}
+
+.board-view {
+  flex: 1; /* This makes the main content take up all remaining space */
+  padding: 2rem;
+  background-color: #ffffff;
+}

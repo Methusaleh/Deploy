@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { getBoards } from "../api/boards";
 
@@ -7,6 +9,7 @@ const initialState = {
   boards: [],
   activeBoard: null,
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
+  cards: [],
 };
 
 function reducer(state, action) {
@@ -16,7 +19,9 @@ function reducer(state, action) {
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
-      return { ...state, activeBoard: action.payload };
+      return { ...state, activeBoard: action.payload, cards: [] };
+    case "setCards":
+      return { ...state, cards: action.payload };
     case "error":
       return { ...state, status: "error" };
     default:
@@ -32,7 +37,6 @@ function BoardProvider({ children }) {
     async function loadBoards() {
       dispatch({ type: "loading" });
       try {
-        // For now, we'll hardcode User ID 1 (Aaron) until we build Auth
         const data = await getBoards(1);
         dispatch({ type: "boardsLoaded", payload: data });
       } catch {
@@ -49,7 +53,6 @@ function BoardProvider({ children }) {
   );
 }
 
-// Custom hook (the Jonas way!)
 function useBoards() {
   const context = useContext(BoardContext);
   if (context === undefined)

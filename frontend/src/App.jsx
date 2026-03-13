@@ -1,30 +1,22 @@
 import { useBoards } from "./context/BoardContext";
+import Sidebar from "./components/Sidebar";
 
 function App() {
-  const { boards, status } = useBoards();
+  const { activeBoard, status } = useBoards();
+
+  if (status === "loading") return <div>Loading...</div>;
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
-      <h1>My Kanban Boards</h1>
-
-      {status === "loading" && <p>Loading boards from Neon...</p>}
-      {status === "error" && (
-        <p>Error connecting to backend. Is FastAPI running?</p>
-      )}
-
-      {status === "ready" && (
-        <ul>
-          {boards.map((board) => (
-            <li key={board.id} style={{ fontSize: "1.2rem", margin: "10px 0" }}>
-              <strong>{board.title}</strong> (ID: {board.id})
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {status === "ready" && boards.length === 0 && (
-        <p>No boards found. Go to Swagger to create one!</p>
-      )}
+    <div className="app-container">
+      <Sidebar />
+      <main className="board-view">
+        {activeBoard ? (
+          <h1>{activeBoard.title}</h1>
+        ) : (
+          <h1>Select a board to start</h1>
+        )}
+        {/*Board Component will go here*/}
+      </main>
     </div>
   );
 }
