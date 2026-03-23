@@ -65,7 +65,8 @@
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 1px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  margin-top: 1rem;
 }
 
 .statusBadge {
@@ -129,18 +130,101 @@
 }
 
 .saveBtn {
-  width: 100%;
+  margin-top: 1rem;
   padding: 0.8rem;
   background-color: var(--accent-cyan);
-  color: #000;
+  color: #121212;
   border: none;
-  border-radius: 4px;
-  font-weight: 600;
+  border-radius: 6px;
+  font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.3s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 
 .saveBtn:disabled {
-  opacity: 0.5;
+  opacity: 0.7;
   cursor: not-allowed;
+}
+
+/* The Success State */
+.saveBtn.saved {
+  background-color: #39ff14 !important; /* Forces the neon green */
+  color: #000000 !important;
+  border-color: #39ff14 !important;
+  opacity: 1 !important; /* Prevents the 'disabled' look from dimming the green */
+  cursor: default;
+  font-weight: 700;
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); /* Adds that 'neon' glow */
+}
+
+.deleteBtn {
+  margin-top: 2rem; /* Give it some space from the save button */
+  background: transparent;
+  border: 1px solid #444;
+  color: #888;
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+}
+
+.deleteBtn:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+/* The "Are you sure?" state */
+.confirmDelete {
+  background-color: #ff4444 !important;
+  color: white !important;
+  border-color: #ff4444 !important;
+  font-weight: bold;
+  animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
+  }
+}
+
+.prioritySelect {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #222;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.prioritySelect:focus {
+  border-color: var(--accent-cyan);
+}
+
+/* Optional: Color the text inside the dropdown */
+.prioritySelect option[value="high"] {
+  color: #ff007f;
+}
+.prioritySelect option[value="medium"] {
+  color: #39ff14;
+}
+.prioritySelect option[value="low"] {
+  color: var(--accent-cyan);
 }

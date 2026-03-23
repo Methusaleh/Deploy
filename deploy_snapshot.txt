@@ -78,23 +78,23 @@ FILE: ./frontend/src\App.jsx
 ==================================================
 import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
+import Board from "./components/Board";
+import Drawer from "./components/Drawer";
 
 function App() {
-  const { activeBoard, status } = useBoards();
+  const { status, boards, selectedCard } = useBoards();
 
-  if (status === "loading") return <div>Loading...</div>;
+  if (status === "loading" && boards.length === 0) {
+    return <div className="loading-screen">Loading...</div>;
+  }
 
   return (
     <div className="app-container">
       <Sidebar />
-      <main className="board-view">
-        {activeBoard ? (
-          <h1>{activeBoard.title}</h1>
-        ) : (
-          <h1>Select a board to start</h1>
-        )}
-        {/*Board Component will go here*/}
+      <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
+        <Board />
       </main>
+      <Drawer key={selectedCard?.id || "empty"} />
     </div>
   );
 }
@@ -171,6 +171,26 @@ export const getBoardCards = async (boardId) => {
   return res.data;
 };
 
+export const updateCard = async (cardId, cardData) => {
+  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cardData),
+  });
+  if (!response.ok) throw new Error("Failed to update card");
+  return response.json();
+};
+
+export const createCard = async (cardData) => {
+  const response = await fetch(`http://localhost:8000/cards/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cardData),
+  });
+  if (!response.ok) throw new Error("Failed to create card");
+  return response.json();
+};
+
 ==================================================
 FILE: ./frontend/src\api\client.js
 ==================================================
@@ -191,6 +211,7 @@ FILE: ./frontend/src\components\Board.jsx
 import { useEffect } from "react";
 import { useBoards } from "../context/BoardContext";
 import { getBoardCards } from "../api/boards";
+import Column from "./Column";
 import styles from "./Board.module.css";
 
 function Board() {
@@ -239,7 +260,10 @@ function Board() {
   return (
     <div className={styles.boardContainer}>
       <header className={styles.header}>
-        <h1>{activeBoard.title}</h1>
+        <div className={styles.headerMain}>
+          <h1>{activeBoard.title}</h1>
+          <span className={styles.totalCount}>{cards.length} Cards</span>
+        </div>
       </header>
 
       <div className={styles.grid}>
@@ -247,10 +271,15 @@ function Board() {
           const columnCards = cards.filter((card) => card.status === column.id);
 
           return (
-            <Column key={column.id} title={column.title} cards={columnCards} />
+            <Column
+              key={column.id}
+              id={column.id} // Pass the status ID (e.g., 'backlog')
+              title={column.title}
+              cards={columnCards}
+              dispatch={dispatch} // Pass dispatch down
+            />
           );
         })}
-        <p>Cards found: {cards.length}</p>
       </div>
     </div>
   );
@@ -264,8 +293,9 @@ FILE: ./frontend/src\components\Board.module.css
 .boardContainer {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: calc(100vw - 260px);
+  overflow: hidden;
   background-color: var(--bg-main); /* #121212 */
 }
 
@@ -280,13 +310,30 @@ FILE: ./frontend/src\components\Board.module.css
   color: var(--text-primary);
 }
 
+.headerMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Pushes the count to the far right */
+}
+
+.totalCount {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle);
+}
+
 .grid {
   display: flex;
   flex: 1;
   padding: 1.5rem;
   gap: 1.5rem;
   overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
+  overflow-y: hidden; /* Hide vertical scrollbar */
   align-items: flex-start;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom scrollbar for that premium dark-mode feel */
@@ -297,6 +344,489 @@ FILE: ./frontend/src\components\Board.module.css
 .grid::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
+}
+
+==================================================
+FILE: ./frontend/src\components\Card.jsx
+==================================================
+import { useBoards } from "../context/BoardContext";
+import styles from "./Card.module.css";
+
+function Card({ card }) {
+  const { dispatch } = useBoards();
+  const priorityStyle = styles[card.priority?.toLowerCase()] || styles.low;
+  return (
+    <div
+      className={styles.card}
+      onClick={() => dispatch({ type: "selectCard", payload: card })}
+    >
+      <div className={styles.content}>
+        <h3 className={styles.cardTitle}>{card.title}</h3>
+        {card.description && (
+          <p className={styles.description}>{card.description}</p>
+        )}
+      </div>
+
+      <div className={styles.footer}>
+        {/* Neon accent indicator for priority */}
+        <span className={`${styles.badge} ${priorityStyle}`}>
+          {card.priority || "Low"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default Card;
+
+==================================================
+FILE: ./frontend/src\components\Card.module.css
+==================================================
+.card {
+  background-color: #1c1c1c;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1.2rem;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* Premium Hover: Subtle lift and shadow pulse */
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #333;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.cardTitle {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Truncates long text to 2 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.footer {
+  margin-top: 1.2rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Neon Priority Accents using the variables from index.css */
+.high {
+  color: #ff007f; /* Magenta */
+  box-shadow: inset 0 0 4px rgba(255, 0, 127, 0.2);
+}
+
+.medium {
+  color: #39ff14; /* Neon Green */
+  box-shadow: inset 0 0 4px rgba(57, 255, 20, 0.2);
+}
+
+.low {
+  color: var(--accent-cyan);
+  box-shadow: inset 0 0 4px rgba(0, 245, 255, 0.2);
+}
+
+==================================================
+FILE: ./frontend/src\components\Column.jsx
+==================================================
+import Card from "./Card";
+import styles from "./Column.module.css";
+
+function Column({ id, title, cards, dispatch }) {
+  return (
+    <div className={styles.column}>
+      <div className={styles.columnHeader}>
+        <h3 className={styles.columnTitle}>
+          {title} <span className={styles.count}>{cards.length}</span>
+        </h3>
+        <button
+          className={styles.addBtn}
+          onClick={() => dispatch({ type: "openCreateDrawer", payload: id })}
+        >
+          +
+        </button>
+      </div>
+
+      <div className={styles.cardList}>
+        {cards.map((card) => (
+          <Card key={card.id} card={card} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default Column;
+
+==================================================
+FILE: ./frontend/src\components\Column.module.css
+==================================================
+.column {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex-shrink: 0;
+  max-height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0.5rem 1.5rem 0.5rem;
+}
+
+.columnHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 5px;
+  margin-bottom: 10px;
+}
+
+.addBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.addBtn:hover {
+  background-color: var(--border-subtle);
+  color: var(--accent-cyan);
+}
+
+.title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: #222;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.2rem;
+  /* Allows scrolling inside a column if it gets too long */
+  overflow-y: auto;
+}
+
+==================================================
+FILE: ./frontend/src\components\Drawer.jsx
+==================================================
+import { useState } from "react";
+import { useBoards } from "../context/BoardContext";
+import { updateCard } from "../api/boards";
+import styles from "./Drawer.module.css";
+
+function Drawer() {
+  const { selectedCard, cards, dispatch } = useBoards();
+
+  // Local state to hold the edits before saving
+  const [title, setTitle] = useState(selectedCard?.title || "");
+  const [description, setDescription] = useState(
+    selectedCard?.description || "",
+  );
+  const [saveStatus, setSaveStatus] = useState("idle");
+
+  // Synchronize local state when the selectedCard changes
+  // useEffect(() => {
+  //   if (selectedCard) {
+  //     setTitle(selectedCard.title);
+  //     setDescription(selectedCard.description || "");
+  //   }
+  // }, [selectedCard]);
+
+  const isNew = selectedCard?.id === "new";
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    try {
+      let result;
+      if (isNew) {
+        result = await createCard({
+          title,
+          description,
+          status: selectedCard.status, // The column we clicked '+' in
+          board_id: activeBoard.id, // From your context
+        });
+        // Add the new card to the global list
+        dispatch({ type: "setCards", payload: [...cards, result] });
+      } else {
+        result = await updateCard(selectedCard.id, { title, description });
+        // Update existing card logic...
+      }
+
+      setSaveStatus("saved");
+      // ... close timeout
+    } catch (err) {
+      setSaveStatus("idle");
+    }
+  };
+
+  // D. Guard Clauses
+  const isOpen = !!selectedCard;
+
+  return (
+    <>
+      <div
+        className={`${styles.overlay} ${isOpen ? styles.show : ""}`}
+        onClick={() => dispatch({ type: "closeDrawer" })}
+      />
+
+      <aside className={`${styles.drawer} ${isOpen ? styles.open : ""}`}>
+        <div className={styles.header}>
+          <button
+            className={styles.closeBtn}
+            onClick={() => dispatch({ type: "closeDrawer" })}
+          >
+            &times;
+          </button>
+        </div>
+
+        {selectedCard && (
+          <div className={styles.content}>
+            <span className={styles.statusBadge}>{selectedCard.status}</span>
+
+            <div className={styles.editGroup}>
+              <label className={styles.label}>Title</label>
+              <input
+                className={styles.titleInput}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Task title..."
+              />
+            </div>
+
+            <div className={styles.editGroup}>
+              <label className={styles.label}>Description</label>
+              <textarea
+                className={styles.descInput}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a more detailed description..."
+              />
+            </div>
+
+            <button
+              className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
+              onClick={handleSave}
+              disabled={saveStatus !== "idle"}
+            >
+              {saveStatus === "saving"
+                ? "Saving..."
+                : saveStatus === "saved"
+                  ? "✓ Saved"
+                  : "Save Changes"}
+            </button>
+          </div>
+        )}
+      </aside>
+    </>
+  );
+}
+
+export default Drawer;
+
+==================================================
+FILE: ./frontend/src\components\Drawer.module.css
+==================================================
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 450px;
+  height: 100vh;
+  background-color: #181818;
+  border-left: 1px solid var(--border-subtle);
+  z-index: 1000;
+  padding: 2rem;
+  /* Start off-screen */
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer.open {
+  transform: translateX(0);
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 999;
+}
+
+.overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.title {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  margin-top: 1rem;
+}
+
+.description {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-top: 1.5rem;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 2rem;
+  cursor: pointer;
+}
+
+.editGroup {
+  margin-bottom: 2rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-bottom: 0.5rem;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  background-color: var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+
+  /* Fix: Prevents the text-edit cursor on non-editable fields */
+  cursor: default;
+  user-select: none;
+}
+
+.titleInput {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  padding: 4px 8px;
+  margin-left: -8px;
+  cursor: text;
+  transition: border-color 0.2s;
+}
+
+.titleInput:focus {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent-cyan);
+}
+
+.titleInput:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-subtle);
+}
+
+.descInput {
+  width: 100%;
+  height: 200px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 0.8rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.descInput:focus {
+  border-color: #444;
+}
+
+.saveBtn {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  background-color: var(--accent-cyan);
+  color: #121212;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.saveBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* The Success State */
+.saveBtn.saved {
+  background-color: #39ff14; /* Neon Green */
+  color: #000;
 }
 
 ==================================================
@@ -387,6 +917,7 @@ const initialState = {
   activeBoard: null,
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
+  selectedCard: null,
 };
 
 function reducer(state, action) {
@@ -398,7 +929,21 @@ function reducer(state, action) {
     case "setActiveBoard":
       return { ...state, activeBoard: action.payload, cards: [] };
     case "setCards":
-      return { ...state, cards: action.payload };
+      return { ...state, cards: action.payload, status: "ready" };
+    case "selectCard":
+      return { ...state, selectedCard: action.payload };
+    case "closeDrawer":
+      return { ...state, selectedCard: null };
+    case "openCreateDrawer":
+      return {
+        ...state,
+        selectedCard: {
+          id: "new",
+          status: action.payload,
+          title: "",
+          description: "",
+        },
+      };
     case "error":
       return { ...state, status: "error" };
     default:
@@ -552,10 +1097,14 @@ import socketio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from contextlib import asynccontextmanager
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from .database import engine, get_db
+from . import models
 from .models import Base
 from . import crud
+from pydantic import BaseModel
 
 
 
@@ -604,6 +1153,19 @@ async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
+class CardUpdate(BaseModel):
+    title: str = None
+    description: str = None
+    status: str = None
+    priority: str = None
+
+class CardCreate(BaseModel):
+    title: str
+    description: str = None
+    status: str = "Backlog"
+    priority: str = "low"
+    board_id: int
+
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Deploy API is running"}
@@ -632,8 +1194,22 @@ async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_d
     return await crud.create_board(db=db, title=title, owner_id=owner_id)
 
 @app.post("/cards/")
-async def post_card(title: str, board_id: int, description: str = None, db: AsyncSession = Depends(get_db)):
-    return await crud.create_card(db=db, title=title, board_id=board_id, description=description)
+async def create_card(card_in: CardCreate, db: AsyncSession = Depends(get_db)):
+    new_card = models.Card(
+        title=card_in.title,
+        description=card_in.description,
+        status=card_in.status,
+        priority=card_in.priority,
+        board_id=card_in.board_id
+    )
+    db.add(new_card)
+    try:
+        await db.commit()
+        await db.refresh(new_card)
+        return new_card
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/users/{user_id}/boards/") #set this up for websocket logic later
 async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
@@ -666,12 +1242,48 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Board not found")
     return {"message": f"Board {board_id} and its cards deleted successfully"}
 
-@app.delete("/cards/{card_id}/")
+@app.delete("/cards/{card_id}")
 async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
-    success = await crud.delete_card(db, card_id)
-    if not success:
+    # 1. Check if it exists
+    result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
+    card = result.scalars().first()
+    
+    if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    return {"message": f"Card {card_id} deleted successfully"}
+    
+    # 2. Delete it
+    await db.delete(card)
+    try:
+        await db.commit()
+        return {"message": "Card deleted successfully"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/cards/{card_id}")
+async def update_card(card_id: int, card_update: CardUpdate, db: Session = Depends(get_db)):
+    # 1. Use select() instead of query()
+    result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
+    card = result.scalars().first()
+    
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    # 2. Extract data
+    update_data = card_update.model_dump(exclude_unset=True)
+    
+    # 3. Update fields
+    for key, value in update_data.items():
+        setattr(card, key, value)
+
+    try:
+        await db.commit()
+        await db.refresh(card)
+        return card
+    except Exception as e:
+        await db.rollback()
+        print(f"Database Error: {e}")
+        raise HTTPException(status_code=500, detail="Database update failed")
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================

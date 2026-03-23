@@ -16,7 +16,7 @@ function App() {
       <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
         <Board />
       </main>
-      <Drawer />
+      <Drawer key={selectedCard?.id || "empty"} />
     </div>
   );
 }

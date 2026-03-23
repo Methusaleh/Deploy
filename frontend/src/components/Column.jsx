@@ -1,12 +1,19 @@
 import Card from "./Card";
 import styles from "./Column.module.css";
 
-function Column({ title, cards }) {
+function Column({ id, title, cards, dispatch }) {
   return (
     <div className={styles.column}>
-      <div className={styles.header}>
-        <h2 className={styles.title}>{title}</h2>
-        <span className={styles.count}>{cards.length}</span>
+      <div className={styles.columnHeader}>
+        <h3 className={styles.columnTitle}>
+          {title} <span className={styles.count}>{cards.length}</span>
+        </h3>
+        <button
+          className={styles.addBtn}
+          onClick={() => dispatch({ type: "openCreateDrawer", payload: id })}
+        >
+          +
+        </button>
       </div>
 
       <div className={styles.cardList}>

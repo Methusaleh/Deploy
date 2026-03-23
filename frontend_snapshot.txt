@@ -8,10 +8,11 @@ import Board from "./components/Board";
 import Drawer from "./components/Drawer";
 
 function App() {
-  const { status, selectedCard } = useBoards();
+  const { status, boards, selectedCard } = useBoards();
 
-  if (status === "loading")
+  if (status === "loading" && boards.length === 0) {
     return <div className="loading-screen">Loading...</div>;
+  }
 
   return (
     <div className="app-container">
@@ -19,7 +20,7 @@ function App() {
       <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
         <Board />
       </main>
-      <Drawer />
+      <Drawer key={selectedCard?.id || "empty"} />
     </div>
   );
 }
@@ -96,6 +97,34 @@ export const getBoardCards = async (boardId) => {
   return res.data;
 };
 
+export const updateCard = async (cardId, cardData) => {
+  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cardData),
+  });
+  if (!response.ok) throw new Error("Failed to update card");
+  return response.json();
+};
+
+export const createCard = async (cardData) => {
+  const response = await fetch(`http://localhost:8000/cards/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cardData),
+  });
+  if (!response.ok) throw new Error("Failed to create card");
+  return response.json();
+};
+
+export const deleteCard = async (cardId) => {
+  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to delete card");
+  return response.json();
+};
+
 ==================================================
 FILE: ./frontend/src\api\client.js
 ==================================================
@@ -116,6 +145,7 @@ FILE: ./frontend/src\components\Board.jsx
 import { useEffect } from "react";
 import { useBoards } from "../context/BoardContext";
 import { getBoardCards } from "../api/boards";
+import Column from "./Column";
 import styles from "./Board.module.css";
 
 function Board() {
@@ -164,7 +194,10 @@ function Board() {
   return (
     <div className={styles.boardContainer}>
       <header className={styles.header}>
-        <h1>{activeBoard.title}</h1>
+        <div className={styles.headerMain}>
+          <h1>{activeBoard.title}</h1>
+          <span className={styles.totalCount}>{cards.length} Cards</span>
+        </div>
       </header>
 
       <div className={styles.grid}>
@@ -172,10 +205,15 @@ function Board() {
           const columnCards = cards.filter((card) => card.status === column.id);
 
           return (
-            <Column key={column.id} title={column.title} cards={columnCards} />
+            <Column
+              key={column.id}
+              id={column.id} // Pass the status ID (e.g., 'backlog')
+              title={column.title}
+              cards={columnCards}
+              dispatch={dispatch} // Pass dispatch down
+            />
           );
         })}
-        <p>Cards found: {cards.length}</p>
       </div>
     </div>
   );
@@ -189,8 +227,9 @@ FILE: ./frontend/src\components\Board.module.css
 .boardContainer {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: calc(100vw - 260px);
+  overflow: hidden;
   background-color: var(--bg-main); /* #121212 */
 }
 
@@ -205,13 +244,30 @@ FILE: ./frontend/src\components\Board.module.css
   color: var(--text-primary);
 }
 
+.headerMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Pushes the count to the far right */
+}
+
+.totalCount {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle);
+}
+
 .grid {
   display: flex;
   flex: 1;
   padding: 1.5rem;
   gap: 1.5rem;
   overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
+  overflow-y: hidden; /* Hide vertical scrollbar */
   align-items: flex-start;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom scrollbar for that premium dark-mode feel */
@@ -227,9 +283,11 @@ FILE: ./frontend/src\components\Board.module.css
 ==================================================
 FILE: ./frontend/src\components\Card.jsx
 ==================================================
+import { useBoards } from "../context/BoardContext";
 import styles from "./Card.module.css";
 
-function Card({ card, dispatch }) {
+function Card({ card }) {
+  const { dispatch } = useBoards();
   const priorityStyle = styles[card.priority?.toLowerCase()] || styles.low;
   return (
     <div
@@ -330,12 +388,19 @@ FILE: ./frontend/src\components\Column.jsx
 import Card from "./Card";
 import styles from "./Column.module.css";
 
-function Column({ title, cards }) {
+function Column({ id, title, cards, dispatch }) {
   return (
     <div className={styles.column}>
-      <div className={styles.header}>
-        <h2 className={styles.title}>{title}</h2>
-        <span className={styles.count}>{cards.length}</span>
+      <div className={styles.columnHeader}>
+        <h3 className={styles.columnTitle}>
+          {title} <span className={styles.count}>{cards.length}</span>
+        </h3>
+        <button
+          className={styles.addBtn}
+          onClick={() => dispatch({ type: "openCreateDrawer", payload: id })}
+        >
+          +
+        </button>
       </div>
 
       <div className={styles.cardList}>
@@ -355,9 +420,9 @@ FILE: ./frontend/src\components\Column.module.css
 .column {
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: 300px;
   flex-shrink: 0;
-  height: 100%;
+  max-height: 100%;
 }
 
 .header {
@@ -367,7 +432,35 @@ FILE: ./frontend/src\components\Column.module.css
   padding: 0.5rem 0.5rem 1.5rem 0.5rem;
 }
 
-.title {
+.columnHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 5px;
+  margin-bottom: 10px;
+}
+
+.addBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.addBtn:hover {
+  background-color: var(--border-subtle);
+  color: var(--accent-cyan);
+}
+
+.colunTitle {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -395,12 +488,95 @@ FILE: ./frontend/src\components\Column.module.css
 ==================================================
 FILE: ./frontend/src\components\Drawer.jsx
 ==================================================
+import { useState } from "react";
 import { useBoards } from "../context/BoardContext";
+import { updateCard, createCard, deleteCard } from "../api/boards";
 import styles from "./Drawer.module.css";
 
 function Drawer() {
-  const { selectedCard, dispatch } = useBoards();
+  const { selectedCard, cards, dispatch, activeBoard } = useBoards();
 
+  // Local state to hold the edits before saving
+  const [title, setTitle] = useState(selectedCard?.title || "");
+  const [description, setDescription] = useState(
+    selectedCard?.description || "",
+  );
+  const [priority, setPriority] = useState(selectedCard?.priority || "low");
+  const [saveStatus, setSaveStatus] = useState("idle");
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Synchronize local state when the selectedCard changes
+  // useEffect(() => {
+  //   if (selectedCard) {
+  //     setTitle(selectedCard.title);
+  //     setDescription(selectedCard.description || "");
+  //   }
+  // }, [selectedCard]);
+
+  const isNew = selectedCard?.id === "new";
+
+  const handleDelete = async () => {
+    if (!isDeleting) {
+      setIsDeleting(true); // First click: show confirmation
+      return;
+    }
+
+    // Second click: perform the delete
+    try {
+      await deleteCard(selectedCard.id);
+
+      // Remove the card from the local list immediately
+      const remainingCards = cards.filter((c) => c.id !== selectedCard.id);
+      dispatch({ type: "setCards", payload: remainingCards });
+
+      dispatch({ type: "closeDrawer" });
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Could not delete card.");
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    try {
+      let result;
+      if (isNew) {
+        result = await createCard({
+          title,
+          description,
+          priority,
+          status: selectedCard.status, // The column we clicked '+' in
+          board_id: activeBoard.id, // From your context
+        });
+        // Add the new card to the global list
+        dispatch({ type: "setCards", payload: [...cards, result] });
+      } else {
+        result = await updateCard(selectedCard.id, {
+          title,
+          description,
+          priority,
+        });
+        const updatedCards = cards.map((c) =>
+          c.id === result.id ? result : c,
+        );
+        dispatch({ type: "setCards", payload: updatedCards });
+      }
+
+      setSaveStatus("saved");
+
+      setTimeout(() => {
+        dispatch({ type: "closeDrawer" });
+        setSaveStatus("idle");
+      }, 600);
+    } catch (err) {
+      console.error("Save failed:", err);
+      setSaveStatus("idle");
+    }
+  };
+
+  // D. Guard Clauses
   const isOpen = !!selectedCard;
 
   return (
@@ -423,11 +599,58 @@ function Drawer() {
         {selectedCard && (
           <div className={styles.content}>
             <span className={styles.statusBadge}>{selectedCard.status}</span>
-            <h2 className={styles.title}>{selectedCard.title}</h2>
-            <p className={styles.description}>
-              {selectedCard.description} || "No description provided."
-            </p>
-            {/* Later: Add Edit Form here */}
+
+            <div className={styles.editGroup}>
+              <label className={styles.label}>Priority</label>
+              <select
+                className={styles.prioritySelect}
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+              <label className={styles.label}>Title</label>
+              <input
+                className={styles.titleInput}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Task title..."
+                autoFocus={isNew}
+              />
+            </div>
+
+            <div className={styles.editGroup}>
+              <label className={styles.label}>Description</label>
+              <textarea
+                className={styles.descInput}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a more detailed description..."
+              />
+            </div>
+
+            <button
+              className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
+              onClick={handleSave}
+              disabled={saveStatus !== "idle"}
+            >
+              {saveStatus === "saving"
+                ? "Saving..."
+                : saveStatus === "saved"
+                  ? "✓ Saved"
+                  : "Save Changes"}
+            </button>
+            {!isNew && (
+              <button
+                className={`${styles.deleteBtn} ${isDeleting ? styles.confirmDelete : ""}`}
+                onClick={handleDelete}
+                onMouseLeave={() => setIsDeleting(false)} // Reset if user moves mouse away
+              >
+                {isDeleting ? "Confirm Delete?" : "Delete Task"}
+              </button>
+            )}
           </div>
         )}
       </aside>
@@ -495,6 +718,180 @@ FILE: ./frontend/src\components\Drawer.module.css
   color: var(--text-secondary);
   font-size: 2rem;
   cursor: pointer;
+}
+
+.editGroup {
+  margin-bottom: 2rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-bottom: 0.8rem;
+  margin-top: 1rem;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  background-color: var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+
+  /* Fix: Prevents the text-edit cursor on non-editable fields */
+  cursor: default;
+  user-select: none;
+}
+
+.titleInput {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  padding: 4px 8px;
+  margin-left: -8px;
+  cursor: text;
+  transition: border-color 0.2s;
+}
+
+.titleInput:focus {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent-cyan);
+}
+
+.titleInput:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-subtle);
+}
+
+.descInput {
+  width: 100%;
+  height: 200px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 0.8rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.descInput:focus {
+  border-color: #444;
+}
+
+.saveBtn {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  background-color: var(--accent-cyan);
+  color: #121212;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.saveBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* The Success State */
+.saveBtn.saved {
+  background-color: #39ff14 !important; /* Forces the neon green */
+  color: #000000 !important;
+  border-color: #39ff14 !important;
+  opacity: 1 !important; /* Prevents the 'disabled' look from dimming the green */
+  cursor: default;
+  font-weight: 700;
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); /* Adds that 'neon' glow */
+}
+
+.deleteBtn {
+  margin-top: 2rem; /* Give it some space from the save button */
+  background: transparent;
+  border: 1px solid #444;
+  color: #888;
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+}
+
+.deleteBtn:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+/* The "Are you sure?" state */
+.confirmDelete {
+  background-color: #ff4444 !important;
+  color: white !important;
+  border-color: #ff4444 !important;
+  font-weight: bold;
+  animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
+  }
+}
+
+.prioritySelect {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #222;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.prioritySelect:focus {
+  border-color: var(--accent-cyan);
+}
+
+/* Optional: Color the text inside the dropdown */
+.prioritySelect option[value="high"] {
+  color: #ff007f;
+}
+.prioritySelect option[value="medium"] {
+  color: #39ff14;
+}
+.prioritySelect option[value="low"] {
+  color: var(--accent-cyan);
 }
 
 ==================================================
@@ -597,11 +994,21 @@ function reducer(state, action) {
     case "setActiveBoard":
       return { ...state, activeBoard: action.payload, cards: [] };
     case "setCards":
-      return { ...state, cards: action.payload };
+      return { ...state, cards: action.payload, status: "ready" };
     case "selectCard":
       return { ...state, selectedCard: action.payload };
     case "closeDrawer":
       return { ...state, selectedCard: null };
+    case "openCreateDrawer":
+      return {
+        ...state,
+        selectedCard: {
+          id: "new",
+          status: action.payload,
+          title: "",
+          description: "",
+        },
+      };
     case "error":
       return { ...state, status: "error" };
     default:

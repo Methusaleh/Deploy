@@ -2,11 +2,14 @@ import socketio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from contextlib import asynccontextmanager
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from .database import engine, get_db
+from . import models
 from .models import Base
 from . import crud
+from pydantic import BaseModel
 
 
 
@@ -55,6 +58,19 @@ async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
+class CardUpdate(BaseModel):
+    title: str = None
+    description: str = None
+    status: str = None
+    priority: str = None
+
+class CardCreate(BaseModel):
+    title: str
+    description: str = None
+    status: str = "Backlog"
+    priority: str = "low"
+    board_id: int
+
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Deploy API is running"}
@@ -83,8 +99,22 @@ async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_d
     return await crud.create_board(db=db, title=title, owner_id=owner_id)
 
 @app.post("/cards/")
-async def post_card(title: str, board_id: int, description: str = None, db: AsyncSession = Depends(get_db)):
-    return await crud.create_card(db=db, title=title, board_id=board_id, description=description)
+async def create_card(card_in: CardCreate, db: AsyncSession = Depends(get_db)):
+    new_card = models.Card(
+        title=card_in.title,
+        description=card_in.description,
+        status=card_in.status,
+        priority=card_in.priority,
+        board_id=card_in.board_id
+    )
+    db.add(new_card)
+    try:
+        await db.commit()
+        await db.refresh(new_card)
+        return new_card
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/users/{user_id}/boards/") #set this up for websocket logic later
 async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
@@ -117,28 +147,45 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Board not found")
     return {"message": f"Board {board_id} and its cards deleted successfully"}
 
-@app.delete("/cards/{card_id}/")
+@app.delete("/cards/{card_id}")
 async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
-    success = await crud.delete_card(db, card_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Card not found")
-    return {"message": f"Card {card_id} deleted successfully"}
-
-@app.put("/cards/{card_id}")
-def update_card(card_id: int, updated_data: dict, db: Session = Depends(get_db)):
-    card = db.query(models.Card).filter(models.Card.id == card_id).first()
+    # 1. Check if it exists
+    result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
+    card = result.scalars().first()
+    
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    if "title" in updated_data:
-        card.title = updated_data["title"]
-    if "description" in updated_data:
-        card.description = updated_data["description"]
-    if "status" in updated_data:
-        card.status = updated_data["status"]
-    if "priority" in updated_data:
-        card.priority = updated_data["priority"]
+    # 2. Delete it
+    await db.delete(card)
+    try:
+        await db.commit()
+        return {"message": "Card deleted successfully"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
-    db.commit()
-    db.refresh(card)
-    return card
+@app.put("/cards/{card_id}")
+async def update_card(card_id: int, card_update: CardUpdate, db: Session = Depends(get_db)):
+    # 1. Use select() instead of query()
+    result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
+    card = result.scalars().first()
+    
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    # 2. Extract data
+    update_data = card_update.model_dump(exclude_unset=True)
+    
+    # 3. Update fields
+    for key, value in update_data.items():
+        setattr(card, key, value)
+
+    try:
+        await db.commit()
+        await db.refresh(card)
+        return card
+    except Exception as e:
+        await db.rollback()
+        print(f"Database Error: {e}")
+        raise HTTPException(status_code=500, detail="Database update failed")

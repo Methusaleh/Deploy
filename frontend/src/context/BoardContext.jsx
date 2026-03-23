@@ -27,6 +27,16 @@ function reducer(state, action) {
       return { ...state, selectedCard: action.payload };
     case "closeDrawer":
       return { ...state, selectedCard: null };
+    case "openCreateDrawer":
+      return {
+        ...state,
+        selectedCard: {
+          id: "new",
+          status: action.payload,
+          title: "",
+          description: "",
+        },
+      };
     case "error":
       return { ...state, status: "error" };
     default:

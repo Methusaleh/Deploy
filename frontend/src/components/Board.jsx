@@ -61,7 +61,13 @@ function Board() {
           const columnCards = cards.filter((card) => card.status === column.id);
 
           return (
-            <Column key={column.id} title={column.title} cards={columnCards} />
+            <Column
+              key={column.id}
+              id={column.id} // Pass the status ID (e.g., 'backlog')
+              title={column.title}
+              cards={columnCards}
+              dispatch={dispatch} // Pass dispatch down
+            />
           );
         })}
       </div>
