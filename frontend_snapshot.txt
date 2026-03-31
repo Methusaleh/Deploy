@@ -151,8 +151,10 @@ import styles from "./Board.module.css";
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
 
+  // Extract ID safely
   const { id } = activeBoard || {};
 
+  // Consistent Column IDs (Sync these with your DB status values!)
   const COLUMNS = [
     { id: "backlog", title: "Backlog" },
     { id: "design", title: "Design" },
@@ -164,12 +166,15 @@ function Board() {
   useEffect(
     function () {
       if (!id) return;
+
       async function fetchCards() {
         try {
           dispatch({ type: "loading" });
           const data = await getBoardCards(id);
           dispatch({ type: "setCards", payload: data });
         } catch (err) {
+          // It's good practice to log the actual error for debugging
+          console.error("Board Fetch Error:", err);
           dispatch({ type: "error", payload: err.message });
         }
       }
@@ -179,6 +184,7 @@ function Board() {
     [id, dispatch],
   );
 
+  // 1. Guard for no board selected
   if (!activeBoard) {
     return (
       <section className={styles.empty}>
@@ -187,8 +193,13 @@ function Board() {
     );
   }
 
+  // 2. Loading state (only show if we don't have cards yet)
   if (status === "loading" && cards.length === 0) {
-    return <p className={styles.message}>Loading cards...</p>;
+    return (
+      <div className={styles.boardContainer}>
+        <p className={styles.message}>Loading cards...</p>
+      </div>
+    );
   }
 
   return (
@@ -202,15 +213,18 @@ function Board() {
 
       <div className={styles.grid}>
         {COLUMNS.map((column) => {
-          const columnCards = cards.filter((card) => card.status === column.id);
+          // Case-insensitive filtering is safer!
+          const columnCards = cards.filter(
+            (card) => card.status?.toLowerCase() === column.id.toLowerCase(),
+          );
 
           return (
             <Column
               key={column.id}
-              id={column.id} // Pass the status ID (e.g., 'backlog')
+              id={column.id}
               title={column.title}
               cards={columnCards}
-              dispatch={dispatch} // Pass dispatch down
+              dispatch={dispatch}
             />
           );
         })}
@@ -288,24 +302,23 @@ import styles from "./Card.module.css";
 
 function Card({ card }) {
   const { dispatch } = useBoards();
-  const priorityStyle = styles[card.priority?.toLowerCase()] || styles.low;
+
+  // Normalize priority for the CSS class (defaults to 'low')
+  const priorityClass = card.priority?.toLowerCase() || "low";
+
   return (
     <div
-      className={styles.card}
+      className={`${styles.card} ${styles[priorityClass]}`}
       onClick={() => dispatch({ type: "selectCard", payload: card })}
     >
+      {/* The vertical color accent */}
+      <div className={styles.priorityBar}></div>
+
       <div className={styles.content}>
         <h3 className={styles.cardTitle}>{card.title}</h3>
         {card.description && (
           <p className={styles.description}>{card.description}</p>
         )}
-      </div>
-
-      <div className={styles.footer}>
-        {/* Neon accent indicator for priority */}
-        <span className={`${styles.badge} ${priorityStyle}`}>
-          {card.priority || "Low"}
-        </span>
       </div>
     </div>
   );
@@ -317,22 +330,21 @@ export default Card;
 FILE: ./frontend/src\components\Card.module.css
 ==================================================
 .card {
-  background-color: #1c1c1c;
+  position: relative;
+  background-color: #1c1c1c; /* Using your specific card background  */
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 1.2rem;
   cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Premium Hover: Subtle lift and shadow pulse */
 .card:hover {
+  border-color: #444;
   transform: translateY(-2px);
-  border-color: #333;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .cardTitle {
@@ -345,8 +357,9 @@ FILE: ./frontend/src\components\Card.module.css
 .description {
   font-size: 0.85rem;
   color: var(--text-secondary);
+  line-height: 1.5; /* Better readability */
   display: -webkit-box;
-  -webkit-line-clamp: 2; /* Truncates long text to 2 lines */
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -380,6 +393,34 @@ FILE: ./frontend/src\components\Card.module.css
 .low {
   color: var(--accent-cyan);
   box-shadow: inset 0 0 4px rgba(0, 245, 255, 0.2);
+}
+
+.priorityBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  z-index: 1; /* Ensures it stays above the card background but below text if overlapped */
+}
+
+.high .priorityBar {
+  background-color: #ff007f;
+  box-shadow: 2px 0 12px rgba(255, 0, 127, 0.4); /* Stronger 'edge' glow */
+}
+
+.medium .priorityBar {
+  background-color: #39ff14;
+  box-shadow: 2px 0 12px rgba(57, 255, 20, 0.2);
+}
+
+.low .priorityBar {
+  background-color: var(--accent-cyan);
+  box-shadow: 2px 0 12px rgba(0, 245, 255, 0.2);
+}
+
+.content {
+  padding: 1.2rem 1.2rem 1.2rem 1.8rem; /* Extra left padding (1.8rem) clears the 4px bar */
 }
 
 ==================================================
@@ -611,6 +652,9 @@ function Drawer() {
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
+            </div>
+
+            <div className={styles.editGroup}>
               <label className={styles.label}>Title</label>
               <input
                 className={styles.titleInput}

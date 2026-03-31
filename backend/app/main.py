@@ -2,16 +2,13 @@ import socketio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from contextlib import asynccontextmanager
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from .database import engine, get_db
 from . import models
 from .models import Base
 from . import crud
 from pydantic import BaseModel
-
-
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
@@ -19,13 +16,9 @@ async def lifespan(app: FastAPI):
     # creates the tables in Neon if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    yield  # The app stays "alive" here
-    
-    # --- Shutdown Logic (Optional) ---
-    # Any cleanup goes here (closing connections, etc.)
+    yield 
 
-# lifespan
+# 2. Initialize FastAPI
 app = FastAPI(
     title="Deploy - V2",
     description="Kanban Board for Software Development",
@@ -33,6 +26,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# 3. CORS Setup
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -43,11 +37,20 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],)
+    allow_headers=["*"],
+)
 
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+# 4. Socket.IO Setup
+sio = socketio.AsyncServer(
+    async_mode='asgi', 
+    cors_allowed_origins=[]
+)
 
+# Create the ASGI wrapper
 socket_app = socketio.ASGIApp(sio, app)
+
+# CRITICAL: Mount the socket.io handler so the 404 error disappears
+app.mount("/socket.io", socket_app)
 
 @sio.event
 async def connect(sid, environ):
@@ -58,6 +61,7 @@ async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
+# 5. Pydantic Schemas
 class CardUpdate(BaseModel):
     title: str = None
     description: str = None
@@ -71,20 +75,16 @@ class CardCreate(BaseModel):
     priority: str = "low"
     board_id: int
 
+# 6. Routes
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Deploy API is running"}
 
 @app.get("/test-user/{handle}")
 async def test_user_connection(handle: str, db: AsyncSession = Depends(get_db)):
-    # Use the CRUD function to find the user
     user = await crud.get_user_by_handle(db, handle)
-    
-    # If the librarian finds nothing, tell the user
     if not user:
         raise HTTPException(status_code=404, detail="User not found in Neon")
-    
-    # If found, return the info (but NOT the password hash!)
     return {
         "message": "Connection Successful!",
         "user": {
@@ -111,15 +111,26 @@ async def create_card(card_in: CardCreate, db: AsyncSession = Depends(get_db)):
     try:
         await db.commit()
         await db.refresh(new_card)
+
+        await sio.emit("card_created", {
+            "id": new_card.id,
+            "title": new_card.title,
+            "description": new_card.description,
+            "status": new_card.status,
+            "priority": new_card.priority,
+            "board_id": new_card.board_id
+        }, room=str(new_card.board_id))
+        
         return new_card
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/users/{user_id}/boards/") #set this up for websocket logic later
+@app.get("/users/{user_id}/boards/")
 async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
     boards = await crud.get_boards_by_user(db, user_id)
     return boards
+
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
     cards = await crud.get_cards_by_board(db, board_id)
@@ -131,14 +142,14 @@ async def update_card_status(card_id: int, new_status: str, db: AsyncSession = D
     if not updated_card:
         raise HTTPException(status_code=404, detail="Card not found")
     
+    # Broadcast to everyone in the board's room
     await sio.emit("card_updated", {
-        "card_id": card_id,
-        "status": new_status},
-        room=str(updated_card.board_id)
-    )
+        "id": card_id,
+        "status": new_status,
+        "board_id": updated_card.board_id
+    }, room=str(updated_card.board_id))
 
     return updated_card
-    
 
 @app.delete("/boards/{board_id}/")
 async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -149,42 +160,51 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
 
 @app.delete("/cards/{card_id}")
 async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
-    # 1. Check if it exists
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
     
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    # 2. Delete it
+    board_id = card.board_id
     await db.delete(card)
     try:
         await db.commit()
+        # Broadcast the deletion so other tabs remove it
+        await sio.emit("card_deleted", {"id": card_id}, room=str(board_id))
         return {"message": "Card deleted successfully"}
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/cards/{card_id}")
-async def update_card(card_id: int, card_update: CardUpdate, db: Session = Depends(get_db)):
-    # 1. Use select() instead of query()
+async def update_card(card_id: int, card_update: CardUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
     
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    # 2. Extract data
     update_data = card_update.model_dump(exclude_unset=True)
-    
-    # 3. Update fields
     for key, value in update_data.items():
         setattr(card, key, value)
 
     try:
         await db.commit()
         await db.refresh(card)
+
+        # 1. Targeted Broadcast: Only send to the specific board room
+        await sio.emit("card_updated", {
+            "id": card.id,
+            "title": card.title,
+            "description": card.description,
+            "status": card.status,
+            "priority": card.priority,
+            "board_id": card.board_id
+        }, room=str(card.board_id)) # <--- This is the key change
+        
         return card
+
     except Exception as e:
         await db.rollback()
         print(f"Database Error: {e}")

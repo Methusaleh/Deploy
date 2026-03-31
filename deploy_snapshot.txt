@@ -191,6 +191,14 @@ export const createCard = async (cardData) => {
   return response.json();
 };
 
+export const deleteCard = async (cardId) => {
+  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to delete card");
+  return response.json();
+};
+
 ==================================================
 FILE: ./frontend/src\api\client.js
 ==================================================
@@ -383,6 +391,7 @@ export default Card;
 FILE: ./frontend/src\components\Card.module.css
 ==================================================
 .card {
+  position: relative;
   background-color: #1c1c1c;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
@@ -446,6 +455,19 @@ FILE: ./frontend/src\components\Card.module.css
 .low {
   color: var(--accent-cyan);
   box-shadow: inset 0 0 4px rgba(0, 245, 255, 0.2);
+}
+
+.priorityBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.high .priorityBar {
+  background-color: #ff007f; /* That beautiful Magenta */
+  box-shadow: 0 0 10px rgba(255, 0, 127, 0.4); /* Subtle neon glow */
 }
 
 ==================================================
@@ -526,7 +548,7 @@ FILE: ./frontend/src\components\Column.module.css
   color: var(--accent-cyan);
 }
 
-.title {
+.colunTitle {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -556,18 +578,21 @@ FILE: ./frontend/src\components\Drawer.jsx
 ==================================================
 import { useState } from "react";
 import { useBoards } from "../context/BoardContext";
-import { updateCard } from "../api/boards";
+import { updateCard, createCard, deleteCard } from "../api/boards";
 import styles from "./Drawer.module.css";
 
 function Drawer() {
-  const { selectedCard, cards, dispatch } = useBoards();
+  const { selectedCard, cards, dispatch, activeBoard } = useBoards();
 
   // Local state to hold the edits before saving
   const [title, setTitle] = useState(selectedCard?.title || "");
   const [description, setDescription] = useState(
     selectedCard?.description || "",
   );
+  const [priority, setPriority] = useState(selectedCard?.priority || "low");
   const [saveStatus, setSaveStatus] = useState("idle");
+
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Synchronize local state when the selectedCard changes
   // useEffect(() => {
@@ -579,6 +604,28 @@ function Drawer() {
 
   const isNew = selectedCard?.id === "new";
 
+  const handleDelete = async () => {
+    if (!isDeleting) {
+      setIsDeleting(true); // First click: show confirmation
+      return;
+    }
+
+    // Second click: perform the delete
+    try {
+      await deleteCard(selectedCard.id);
+
+      // Remove the card from the local list immediately
+      const remainingCards = cards.filter((c) => c.id !== selectedCard.id);
+      dispatch({ type: "setCards", payload: remainingCards });
+
+      dispatch({ type: "closeDrawer" });
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Could not delete card.");
+      setIsDeleting(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaveStatus("saving");
     try {
@@ -587,19 +634,32 @@ function Drawer() {
         result = await createCard({
           title,
           description,
+          priority,
           status: selectedCard.status, // The column we clicked '+' in
           board_id: activeBoard.id, // From your context
         });
         // Add the new card to the global list
         dispatch({ type: "setCards", payload: [...cards, result] });
       } else {
-        result = await updateCard(selectedCard.id, { title, description });
-        // Update existing card logic...
+        result = await updateCard(selectedCard.id, {
+          title,
+          description,
+          priority,
+        });
+        const updatedCards = cards.map((c) =>
+          c.id === result.id ? result : c,
+        );
+        dispatch({ type: "setCards", payload: updatedCards });
       }
 
       setSaveStatus("saved");
-      // ... close timeout
+
+      setTimeout(() => {
+        dispatch({ type: "closeDrawer" });
+        setSaveStatus("idle");
+      }, 600);
     } catch (err) {
+      console.error("Save failed:", err);
       setSaveStatus("idle");
     }
   };
@@ -629,12 +689,26 @@ function Drawer() {
             <span className={styles.statusBadge}>{selectedCard.status}</span>
 
             <div className={styles.editGroup}>
+              <label className={styles.label}>Priority</label>
+              <select
+                className={styles.prioritySelect}
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+
+            <div className={styles.editGroup}>
               <label className={styles.label}>Title</label>
               <input
                 className={styles.titleInput}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Task title..."
+                autoFocus={isNew}
               />
             </div>
 
@@ -659,6 +733,15 @@ function Drawer() {
                   ? "✓ Saved"
                   : "Save Changes"}
             </button>
+            {!isNew && (
+              <button
+                className={`${styles.deleteBtn} ${isDeleting ? styles.confirmDelete : ""}`}
+                onClick={handleDelete}
+                onMouseLeave={() => setIsDeleting(false)} // Reset if user moves mouse away
+              >
+                {isDeleting ? "Confirm Delete?" : "Delete Task"}
+              </button>
+            )}
           </div>
         )}
       </aside>
@@ -738,7 +821,8 @@ FILE: ./frontend/src\components\Drawer.module.css
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 1px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  margin-top: 1rem;
 }
 
 .statusBadge {
@@ -825,8 +909,80 @@ FILE: ./frontend/src\components\Drawer.module.css
 
 /* The Success State */
 .saveBtn.saved {
-  background-color: #39ff14; /* Neon Green */
-  color: #000;
+  background-color: #39ff14 !important; /* Forces the neon green */
+  color: #000000 !important;
+  border-color: #39ff14 !important;
+  opacity: 1 !important; /* Prevents the 'disabled' look from dimming the green */
+  cursor: default;
+  font-weight: 700;
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); /* Adds that 'neon' glow */
+}
+
+.deleteBtn {
+  margin-top: 2rem; /* Give it some space from the save button */
+  background: transparent;
+  border: 1px solid #444;
+  color: #888;
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+}
+
+.deleteBtn:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+/* The "Are you sure?" state */
+.confirmDelete {
+  background-color: #ff4444 !important;
+  color: white !important;
+  border-color: #ff4444 !important;
+  font-weight: bold;
+  animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
+  }
+}
+
+.prioritySelect {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #222;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.prioritySelect:focus {
+  border-color: var(--accent-cyan);
+}
+
+/* Optional: Color the text inside the dropdown */
+.prioritySelect option[value="high"] {
+  color: #ff007f;
+}
+.prioritySelect option[value="medium"] {
+  color: #39ff14;
+}
+.prioritySelect option[value="low"] {
+  color: var(--accent-cyan);
 }
 
 ==================================================

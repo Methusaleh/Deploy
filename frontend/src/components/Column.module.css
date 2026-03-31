@@ -1,8 +1,9 @@
 .column {
   display: flex;
   flex-direction: column;
+  background-color: var(--bg-column);
+  border-radius: 8px;
   width: 300px;
-  flex-shrink: 0;
   max-height: 100%;
 }
 
@@ -60,8 +61,26 @@
 .cardList {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  padding: 0.2rem;
-  /* Allows scrolling inside a column if it gets too long */
+  gap: 12px;
+  padding: 10px;
   overflow-y: auto;
+  min-height: 200px;
+  max-height: calc(100vh - 200px);
+  transition: background-color 0.2s ease;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-magenta) transparent;
+}
+
+.cardList::-webkit-scrollbar {
+  width: 6px;
+}
+.cardList::-webkit-scrollbar-thumb {
+  background-color: var(--accent-magenta);
+  border-radius: 10px;
+}
+
+.draggingOver {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  outline: 2px dashed rgba(255, 255, 255, 0.1);
 }

@@ -121,6 +121,9 @@ function Drawer() {
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
+            </div>
+
+            <div className={styles.editGroup}>
               <label className={styles.label}>Title</label>
               <input
                 className={styles.titleInput}
