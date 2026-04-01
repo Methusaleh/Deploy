@@ -4,20 +4,37 @@ import styles from "./Sidebar.module.css";
 function Sidebar() {
   const { boards, activeBoard, dispatch } = useBoards();
 
+  const handleLogout = () => {
+    localStorage.removeItem("token"); // Clear the key
+    dispatch({ type: "logout" }); // Reset the global state
+    window.location.reload(); // Hard refresh to clear everything
+  };
+
   return (
     <aside className={styles.sidebar}>
-      <h2>My Boards</h2>
-      <ul>
-        {boards.map((board) => (
-          <li
-            key={board.id}
-            className={`${styles.li} ${activeBoard?.id === board.id ? styles.active : ""}`}
-            onClick={() => dispatch({ type: "setActiveBoard", payload: board })}
-          >
-            {board.title}
-          </li>
-        ))}
-      </ul>
+      <div className={styles.topSection}>
+        <h1 className={styles.logo}>Deploy</h1>
+        <nav className={styles.nav}>
+          {boards.map((board) => (
+            <button
+              key={board.id}
+              className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
+              onClick={() =>
+                dispatch({ type: "setActiveBoard", payload: board })
+              }
+            >
+              {board.title}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* --- NEW LOGOUT SECTION --- */}
+      <div className={styles.bottomSection}>
+        <button className={styles.logoutBtn} onClick={handleLogout}>
+          Log Out
+        </button>
+      </div>
     </aside>
   );
 }

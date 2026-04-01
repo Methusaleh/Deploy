@@ -76,16 +76,32 @@ FILE: .\frontend_snapshot.txt
 ==================================================
 FILE: ./frontend/src\App.jsx
 ==================================================
+// frontend/src/App.jsx
+import { useState } from "react";
 import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
 import Board from "./components/Board";
 import Drawer from "./components/Drawer";
+import Auth from "./components/Auth"; // Import your new component
 
 function App() {
   const { status, boards, selectedCard } = useBoards();
+  // Check localStorage for an existing token [cite: 258]
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    !!localStorage.getItem("token"),
+  );
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+  };
+
+  // If not logged in, show ONLY the Auth component
+  if (!isAuthenticated) {
+    return <Auth onLoginSuccess={handleLoginSuccess} />;
+  }
 
   if (status === "loading" && boards.length === 0) {
-    return <div className="loading-screen">Loading...</div>;
+    return <div className="loading-screen">Loading...</div>; // [cite: 232]
   }
 
   return (
@@ -224,6 +240,178 @@ const socket = io("http://localhost:8000", {
 });
 
 export default socket;
+
+==================================================
+FILE: ./frontend/src\components\Auth.jsx
+==================================================
+import React, { useState } from "react";
+import styles from "./Auth.module.css";
+import { useBoards } from "../context/BoardContext";
+
+const Auth = ({ onLoginSuccess }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    first_name: "",
+    last_name: "",
+  });
+  const [error, setError] = useState("");
+  const { dispatch } = useBoards();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      if (isLogin) {
+        // --- LOGIN LOGIC ---
+        const params = new URLSearchParams();
+        params.append("username", formData.email);
+        params.append("password", formData.password);
+
+        const response = await fetch("http://localhost:8000/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params,
+        });
+
+        if (!response.ok) throw new Error("Invalid email or password");
+
+        const data = await response.json();
+        // Save the token to local storage
+        localStorage.setItem("token", data.access_token);
+        dispatch({ type: "login" });
+        onLoginSuccess();
+      } else {
+        // --- REGISTER LOGIC ---
+        const response = await fetch("http://localhost:8000/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) throw new Error("Registration failed");
+        setIsLogin(true); // Switch to login after success
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className={styles.overlay}>
+      <div className={styles.card}>
+        <h2 className={styles.title}>
+          {isLogin ? "Welcome Back" : "Join Deploy"}
+        </h2>
+        {error && <p style={{ color: "#ff4d4d" }}>{error}</p>}
+
+        <form onSubmit={handleSubmit}>
+          {!isLogin && (
+            <>
+              <input
+                className={styles.inputField}
+                type="text"
+                placeholder="First Name"
+                required
+                onChange={(e) =>
+                  setFormData({ ...formData, first_name: e.target.value })
+                }
+              />
+              <input
+                className={styles.inputField}
+                type="text"
+                placeholder="Last Name"
+                required
+                onChange={(e) =>
+                  setFormData({ ...formData, last_name: e.target.value })
+                }
+              />
+            </>
+          )}
+          <input
+            className={styles.inputField}
+            type="email"
+            placeholder="Email"
+            required
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+          />
+          <input
+            className={styles.inputField}
+            type="password"
+            placeholder="Password"
+            required
+            onChange={(e) =>
+              setFormData({ ...formData, password: e.target.value })
+            }
+          />
+          <button className={styles.submitBtn} type="submit">
+            {isLogin ? "Login" : "Create Account"}
+          </button>
+        </form>
+
+        <p onClick={() => setIsLogin(!isLogin)} className={styles.toggleText}>
+          {isLogin
+            ? "Don't have an account? Register"
+            : "Already have an account? Login"}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default Auth;
+
+==================================================
+FILE: ./frontend/src\components\Auth.module.css
+==================================================
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.card {
+  background: var(--bg-secondary);
+  padding: 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  width: 100%;
+  max-width: 350px;
+}
+
+.inputField {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  background: var(--bg-main);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+
+.submitBtn {
+  width: 100%;
+  padding: 10px;
+  background: var(--accent-cyan);
+  color: black;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}
 
 ==================================================
 FILE: ./frontend/src\components\Board.jsx
@@ -1159,20 +1347,37 @@ import styles from "./Sidebar.module.css";
 function Sidebar() {
   const { boards, activeBoard, dispatch } = useBoards();
 
+  const handleLogout = () => {
+    localStorage.removeItem("token"); // Clear the key
+    dispatch({ type: "logout" }); // Reset the global state
+    window.location.reload(); // Hard refresh to clear everything
+  };
+
   return (
     <aside className={styles.sidebar}>
-      <h2>My Boards</h2>
-      <ul>
-        {boards.map((board) => (
-          <li
-            key={board.id}
-            className={`${styles.li} ${activeBoard?.id === board.id ? styles.active : ""}`}
-            onClick={() => dispatch({ type: "setActiveBoard", payload: board })}
-          >
-            {board.title}
-          </li>
-        ))}
-      </ul>
+      <div className={styles.topSection}>
+        <h1 className={styles.logo}>Deploy</h1>
+        <nav className={styles.nav}>
+          {boards.map((board) => (
+            <button
+              key={board.id}
+              className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
+              onClick={() =>
+                dispatch({ type: "setActiveBoard", payload: board })
+              }
+            >
+              {board.title}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* --- NEW LOGOUT SECTION --- */}
+      <div className={styles.bottomSection}>
+        <button className={styles.logoutBtn} onClick={handleLogout}>
+          Log Out
+        </button>
+      </div>
     </aside>
   );
 }
@@ -1183,12 +1388,13 @@ export default Sidebar;
 FILE: ./frontend/src\components\Sidebar.module.css
 ==================================================
 .sidebar {
-  width: 260px;
-  background-color: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem;
+  justify-content: space-between; /* Pushes topSection and bottomSection apart */
+  height: 100vh;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .sidebar h2 {
@@ -1223,6 +1429,23 @@ FILE: ./frontend/src\components\Sidebar.module.css
   box-shadow: inset 2px 0 0 var(--accent-cyan);
 }
 
+.logoutBtn {
+  width: 100%;
+  padding: 0.8rem;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logoutBtn:hover {
+  background: #ff4d4d22; /* Faint red glow */
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+}
+
 ==================================================
 FILE: ./frontend/src\context\BoardContext.jsx
 ==================================================
@@ -1240,12 +1463,15 @@ const initialState = {
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
   selectedCard: null,
+  isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case "loading":
       return { ...state, status: "loading" };
+    case "login":
+      return { ...state, isAuthenticated: true };
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
@@ -1266,6 +1492,11 @@ function reducer(state, action) {
           description: "",
         },
       };
+    case "logout":
+      return {
+        ...initialState,
+        isAuthenticated: false,
+      };
     case "error":
       return { ...state, status: "error" };
     default:
@@ -1276,19 +1507,22 @@ function reducer(state, action) {
 function BoardProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Load boards on startup
   useEffect(() => {
-    async function loadBoards() {
-      dispatch({ type: "loading" });
-      try {
-        const data = await getBoards(1);
-        dispatch({ type: "boardsLoaded", payload: data });
-      } catch {
-        dispatch({ type: "error" });
+    // Only fetch if we are actually logged in
+    if (state.isAuthenticated) {
+      async function loadBoards() {
+        dispatch({ type: "loading" });
+        try {
+          // We'll update getBoards soon to stop using hardcoded '1'
+          const data = await getBoards(1);
+          dispatch({ type: "boardsLoaded", payload: data });
+        } catch {
+          dispatch({ type: "error" });
+        }
       }
+      loadBoards();
     }
-    loadBoards();
-  }, []);
+  }, [state.isAuthenticated]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {
@@ -1610,35 +1844,49 @@ async def login_for_access_token(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+import re # Make sure this is at the very top of main.py!
+
 @app.post("/register", response_model=schemas.UserResponse)
 async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
-    # 1. Check if email already exists
+    # 1. Check if email exists
     query = select(models.User).where(models.User.email == user_in.email)
     result = await db.execute(query)
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # 2. Hash the password and create the user object
-    hashed = auth_utils.hash_password(user_in.password)
+    # 2. Manual Handle Generation (The Fix)
+    generated_handle = user_in.handle
+    if not generated_handle:
+        clean_first = re.sub(r'\W+', '', user_in.first_name.lower())
+        clean_last = re.sub(r'\W+', '', user_in.last_name.lower())
+        generated_handle = f"@{clean_first}_{clean_last}"
+
+    # 3. Create user with the guaranteed handle
     new_user = models.User(
         email=user_in.email,
-        hashed_password=hashed,
+        hashed_password=auth_utils.hash_password(user_in.password),
         first_name=user_in.first_name,
         last_name=user_in.last_name,
-        # handle is auto-generated by your @validates logic in models.py
+        handle=generated_handle, # Pass the handle explicitly here
+        is_active=True
     )
     
     db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    return new_user
+    try:
+        await db.commit()
+        await db.refresh(new_user)
+        return new_user
+    except Exception as e:
+        await db.rollback()
+        print(f"Registration Error: {e}")
+        raise HTTPException(status_code=500, detail="Database error during registration")
 
 @app.post("/boards/")
 async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_db)):
     return await crud.create_board(db=db, title=title, owner_id=owner_id)
 
 @app.post("/cards/")
-async def create_card(card_in: CardCreate, db: AsyncSession = Depends(get_db)):
+async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
     new_card = models.Card(
         title=card_in.title,
         description=card_in.description,
@@ -1717,7 +1965,7 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/cards/{card_id}")
-async def update_card(card_id: int, card_update: CardUpdate, db: AsyncSession = Depends(get_db)):
+async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
     
@@ -1751,7 +1999,7 @@ async def update_card(card_id: int, card_update: CardUpdate, db: AsyncSession = 
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
-from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, Table, Text
+from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, Table, Text, Boolean
 from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re

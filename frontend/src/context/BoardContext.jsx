@@ -12,12 +12,15 @@ const initialState = {
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
   selectedCard: null,
+  isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case "loading":
       return { ...state, status: "loading" };
+    case "login":
+      return { ...state, isAuthenticated: true };
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
@@ -38,6 +41,11 @@ function reducer(state, action) {
           description: "",
         },
       };
+    case "logout":
+      return {
+        ...initialState,
+        isAuthenticated: false,
+      };
     case "error":
       return { ...state, status: "error" };
     default:
@@ -48,19 +56,22 @@ function reducer(state, action) {
 function BoardProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Load boards on startup
   useEffect(() => {
-    async function loadBoards() {
-      dispatch({ type: "loading" });
-      try {
-        const data = await getBoards(1);
-        dispatch({ type: "boardsLoaded", payload: data });
-      } catch {
-        dispatch({ type: "error" });
+    // Only fetch if we are actually logged in
+    if (state.isAuthenticated) {
+      async function loadBoards() {
+        dispatch({ type: "loading" });
+        try {
+          // We'll update getBoards soon to stop using hardcoded '1'
+          const data = await getBoards(1);
+          dispatch({ type: "boardsLoaded", payload: data });
+        } catch {
+          dispatch({ type: "error" });
+        }
       }
+      loadBoards();
     }
-    loadBoards();
-  }, []);
+  }, [state.isAuthenticated]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {

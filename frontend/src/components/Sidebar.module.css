@@ -1,10 +1,11 @@
 .sidebar {
-  width: 260px;
-  background-color: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem;
+  justify-content: space-between; /* Pushes topSection and bottomSection apart */
+  height: 100vh;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .sidebar h2 {
@@ -15,26 +16,51 @@
   margin-bottom: 2rem;
 }
 
-.sidebar ul {
-  list-style: none;
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 2rem;
 }
 
-.sidebar li {
-  padding: 0.6rem 1rem;
-  margin-bottom: 0.4rem;
+.navItem {
+  width: 100%;
+  text-align: left;
+  padding: 0.8rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
+  font-size: 0.9rem;
   transition: all 0.2s ease;
 }
 
-.sidebar li:hover {
-  background-color: #222222;
+.navItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 
-.sidebar li.active {
+.navItem.active {
   background-color: #1e1e1e;
   color: var(--accent-cyan);
-  box-shadow: inset 2px 0 0 var(--accent-cyan);
+  border-color: var(--border-subtle);
+  box-shadow: inset 3px 0 0 var(--accent-cyan);
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 0.8rem;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logoutBtn:hover {
+  background: #ff4d4d22; /* Faint red glow */
+  color: #ff4d4d;
+  border-color: #ff4d4d;
 }
