@@ -177,9 +177,24 @@ FILE: ./frontend/src\api\boards.js
 ==================================================
 import apiCLient from "./client";
 
-export const getBoards = async (userId) => {
-  const res = await apiCLient.get(`/users/${userId}/boards/`);
-  return res.data;
+const API_URL = "http://localhost:8000";
+
+export const getBoards = async () => {
+  const token = localStorage.getItem("token"); // Grab your saved token
+
+  const response = await fetch(`${API_URL}/boards/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`, // Send the token in the header
+    },
+  });
+
+  if (!response.ok) {
+    // If the token is expired or invalid, the backend returns 401
+    throw new Error("Failed to fetch boards");
+  }
+  return response.json();
 };
 
 export const getBoardCards = async (boardId) => {
@@ -212,6 +227,28 @@ export const deleteCard = async (cardId) => {
     method: "DELETE",
   });
   if (!response.ok) throw new Error("Failed to delete card");
+  return response.json();
+};
+
+==================================================
+FILE: ./frontend/src\api\cards.js
+==================================================
+const API_URL = "http://localhost:8000";
+
+export const getMyGlobalCards = async () => {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_URL}/cards/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch global cards");
+  }
   return response.json();
 };
 
@@ -422,6 +459,7 @@ import { useBoards } from "../context/BoardContext";
 import { getBoardCards, updateCard } from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
+import Home from "./Home";
 
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
@@ -496,11 +534,7 @@ function Board() {
 
   // 1. Guard for no board selected
   if (!activeBoard) {
-    return (
-      <section className={styles.empty}>
-        <p>Select a board from the sidebar to get started</p>
-      </section>
-    );
+    return <Home />;
   }
 
   // 2. Loading state (only show if we don't have cards yet)
@@ -1339,6 +1373,167 @@ FILE: ./frontend/src\components\Drawer.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\Home.jsx
+==================================================
+// frontend/src/components/Home.jsx
+import React, { useEffect, useState } from "react";
+import { getMyGlobalCards } from "../api/cards";
+import styles from "./Home.module.css";
+
+const Home = () => {
+  const [globalCards, setGlobalCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchGlobalData = async () => {
+      try {
+        const data = await getMyGlobalCards();
+        setGlobalCards(data);
+      } catch (err) {
+        console.error("Error loading dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGlobalData();
+  }, []);
+
+  if (loading)
+    return <div className={styles.loading}>Analyzing your workspace...</div>;
+
+  return (
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <h1>Welcome back, Aaron</h1>
+        <p>Here’s what’s happening across your projects.</p>
+      </header>
+
+      <section className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Tasks</span>
+          <span className={styles.statValue}>{globalCards.length}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Stale Tasks</span>
+          <span className={styles.statValue}>--</span>{" "}
+          {/* We'll calculate this tomorrow */}
+        </div>
+      </section>
+
+      <div className={styles.content}>
+        <div className={styles.feedSection}>
+          <h2>Global Feed</h2>
+          {globalCards.map((card) => (
+            <div key={card.id} className={styles.miniCard}>
+              <span
+                className={styles.priorityDot}
+                data-priority={card.priority}
+              ></span>
+              <div className={styles.cardInfo}>
+                <span className={styles.cardTitle}>{card.title}</span>
+                <span className={styles.cardMeta}>
+                  Board ID: {card.board_id} • {card.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Home;
+
+==================================================
+FILE: ./frontend/src\components\Home.module.css
+==================================================
+.container {
+  padding: 3rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  color: var(--text-primary);
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--accent-cyan); /* Using your Neon Cyan */
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.statCard {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.statValue {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+.miniCard {
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.miniCard:hover {
+  border-color: var(--border-subtle);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.priorityDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.priorityDot[data-priority="high"] {
+  background: #ff4d4d;
+}
+.priorityDot[data-priority="medium"] {
+  background: #ffcc00;
+}
+.priorityDot[data-priority="low"] {
+  background: var(--accent-cyan);
+}
+
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
 import { useBoards } from "../context/BoardContext";
@@ -1356,7 +1551,14 @@ function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.topSection}>
-        <h1 className={styles.logo}>Deploy</h1>
+        <h1
+          className={styles.logo}
+          onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
+        >
+          Deploy
+        </h1>
+
+        <div className={styles.sectionHeader}>My Boards</div>
         <nav className={styles.nav}>
           {boards.map((board) => (
             <button
@@ -1405,28 +1607,55 @@ FILE: ./frontend/src\components\Sidebar.module.css
   margin-bottom: 2rem;
 }
 
-.sidebar ul {
-  list-style: none;
+.sectionHeader {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin: 2rem 0 0.5rem 1rem; /* Space it out from the Logo */
+  opacity: 0.6;
 }
 
-.sidebar li {
-  padding: 0.6rem 1rem;
-  margin-bottom: 0.4rem;
+.logo {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 2rem;
+}
+
+.navItem {
+  width: 100%;
+  text-align: left;
+  padding: 0.8rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
+  font-size: 0.9rem;
   transition: all 0.2s ease;
 }
 
-.sidebar li:hover {
-  background-color: #222222;
+.navItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 
-.sidebar li.active {
+.navItem.active {
   background-color: #1e1e1e;
   color: var(--accent-cyan);
-  box-shadow: inset 2px 0 0 var(--accent-cyan);
+  border-color: var(--border-subtle);
+  box-shadow: inset 3px 0 0 var(--accent-cyan);
 }
 
 .logoutBtn {
@@ -1664,6 +1893,18 @@ async def get_cards_by_board(db: AsyncSession, board_id: int):
     result = await db.execute(query)
     return result.scalars().all()
 
+async def get_all_user_cards(db: AsyncSession, user_id: int):
+    # This joins the Boards and Cards tables 
+    # to find cards where the board's owner_id matches the user
+    query = (
+        select(models.Card)
+        .join(models.Board)
+        .where(models.Board.owner_id == user_id)
+        .order_by(models.Card.due_date.asc(), models.Card.last_moved_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
 async def update_card_status(db: AsyncSession, card_id: int, new_status: str):
     query = select(models.Card).where(models.Card.id == card_id)
     result = await db.execute(query)
@@ -1737,16 +1978,20 @@ FILE: .\backend\app\main.py
 import socketio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm  
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer  
 from contextlib import asynccontextmanager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel # <--- Added back in
+from pydantic import BaseModel
+from jose import JWTError, jwt
+from typing import List
+from datetime import datetime, timezone
 
 # Local App Imports
 from .database import engine, get_db
 from . import models, schemas, auth_utils, crud
 from .models import Base
+import app.auth_utils as auth_utils
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
@@ -1763,6 +2008,40 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# --- AUTH DEPENDENCY ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: AsyncSession = Depends(get_db)
+):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        # 1. Decode the JWT using your auth_utils constants
+        payload = jwt.decode(
+            token, 
+            auth_utils.SECRET_KEY, 
+            algorithms=[auth_utils.ALGORITHM]
+        )
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    # 2. Look up the user in Neon
+    query = select(models.User).where(models.User.email == email)
+    result = await db.execute(query)
+    user = result.scalars().first()
+    
+    if user is None:
+        raise credentials_exception
+    return user
 
 # 3. CORS Setup
 origins = [
@@ -1798,8 +2077,6 @@ async def connect(sid, environ):
 async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
-
-# 5. Pydantic Schemas
 
 
 # 6. Routes
@@ -1881,9 +2158,20 @@ async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(
         print(f"Registration Error: {e}")
         raise HTTPException(status_code=500, detail="Database error during registration")
 
-@app.post("/boards/")
-async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_db)):
-    return await crud.create_board(db=db, title=title, owner_id=owner_id)
+@app.post("/boards/", response_model=schemas.BoardResponse)
+async def create_new_board(
+    board_in: schemas.BoardCreate, 
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    new_board = models.Board(
+        title=board_in.title,
+        owner_id=current_user.id  # Automatically sets the owner to YOU
+    )
+    db.add(new_board)
+    await db.commit()
+    await db.refresh(new_board)
+    return new_board
 
 @app.post("/cards/")
 async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
@@ -1913,14 +2201,31 @@ async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(ge
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/users/{user_id}/boards/")
-async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
-    boards = await crud.get_boards_by_user(db, user_id)
-    return boards
+@app.get("/boards/me", response_model=List[schemas.BoardResponse])
+async def get_my_boards(
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    # This ensures users ONLY see boards where they are the owner
+    query = select(models.Board).where(models.Board.owner_id == current_user.id)
+    result = await db.execute(query)
+    return result.scalars().all()
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
     cards = await crud.get_cards_by_board(db, board_id)
+    return cards
+
+@app.get("/cards/me", response_model=List[schemas.CardResponse])
+async def read_my_global_cards(
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fetches all cards across all boards owned by the current user.
+    Used for the Home Dashboard Global Feed.
+    """
+    cards = await crud.get_all_user_cards(db, current_user.id)
     return cards
 
 @app.patch("/cards/{card_id}/status/")
@@ -1964,7 +2269,7 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/cards/{card_id}")
+@app.put("/cards/{card_id}", response_model=schemas.CardResponse)
 async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
@@ -1973,6 +2278,18 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         raise HTTPException(status_code=404, detail="Card not found")
     
     update_data = card_update.model_dump(exclude_unset=True)
+    
+    # LOGIC: If status is changing, update the 'Last Moved' timestamp
+    if "status" in update_data and update_data["status"] != card.status:
+        card.last_moved_at = datetime.now(timezone.utc)
+        
+        # LOGIC: If moved to 'Done', set completion date. If moved OUT of Done, clear it.
+        if update_data["status"].lower() == "done":
+            card.completed_at = datetime.now(timezone.utc)
+        else:
+            card.completed_at = None
+
+    # Apply all other updates
     for key, value in update_data.items():
         setattr(card, key, value)
 
@@ -1980,17 +2297,23 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         await db.commit()
         await db.refresh(card)
 
-        # 1. Targeted Broadcast: Only send to the specific board room
+        # Broadcast the update to the board room
         await sio.emit("card_updated", {
             "id": card.id,
             "title": card.title,
             "description": card.description,
             "status": card.status,
             "priority": card.priority,
-            "board_id": card.board_id
-        }, room=str(card.board_id)) # <--- This is the key change
+            "board_id": card.board_id,
+            "last_moved_at": card.last_moved_at.isoformat() if card.last_moved_at else None
+        }, room=str(card.board_id))
         
         return card
+
+    except Exception as e:
+        await db.rollback()
+        print(f"Database Error: {e}")
+        raise HTTPException(status_code=500, detail="Database update failed")
 
     except Exception as e:
         await db.rollback()
@@ -2004,10 +2327,12 @@ from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
 
+# 1. Define the Base class here instead of importing it
+# This is the modern SQLAlchemy 2.0 way.
 class Base(DeclarativeBase):
     pass
 
-# --- 1. NEW ASSOCIATION TABLE ---
+# --- 2. ASSOCIATION TABLE ---
 # This links users to boards they have been invited to.
 board_members = Table(
     "board_members",
@@ -2021,10 +2346,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    # Set nullable=True so Google users aren't forced to have a local password
     hashed_password = Column(String, nullable=True) 
     
-    # NEW: For Google Login later
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
 
@@ -2036,13 +2359,12 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    # Relationships (kept from previous step)
+    # Relationships
     owned_boards = relationship("Board", back_populates="owner", cascade="all, delete-orphan")
     shared_boards = relationship("Board", secondary=board_members, back_populates="members")
 
     @validates('handle')
     def validate_handle(self, key, value):
-        # Your regex logic is great—keeping it!
         if not value and self.first_name and self.last_name:
             clean_first = re.sub(r'\W+', '', self.first_name.lower())
             clean_last = re.sub(r'\W+', '', self.last_name.lower())
@@ -2058,10 +2380,7 @@ class Board(Base):
 
     # Relationships
     owner = relationship("User", back_populates="owned_boards")
-    
-    # This links back to the User's shared_boards
     members = relationship("User", secondary=board_members, back_populates="shared_boards")
-    
     cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
 
 class Card(Base):
@@ -2072,8 +2391,13 @@ class Card(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
     priority = Column(String, default="low")
-    board_id = Column(Integer, ForeignKey("boards.id"))
     
+    # Time-tracking fields for Dashboard/Stale logic
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    last_moved_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")
 ==================================================
 FILE: .\backend\app\schemas.py
@@ -2099,22 +2423,38 @@ class UserResponse(UserBase):
     created_at: datetime
 
     class Config:
-        from_attributes = True # Allows Pydantic to read SQLAlchemy models
+        from_attributes = True 
 
-class CardUpdate(BaseModel):
-    title: str = None
-    description: str = None
-    status: str = None
-    priority: str = None
+# --- 2. CARD SCHEMAS ---
 
-class CardCreate(BaseModel):
+# This is the "Parent" schema to avoid repeating fields
+class CardBase(BaseModel):
     title: str
-    description: str = None
-    status: str = "Backlog"
-    priority: str = "low"
+    description: Optional[str] = None
+    status: Optional[str] = "Backlog"
+    priority: Optional[str] = "low"
+
+class CardCreate(CardBase):
     board_id: int
 
-# --- 2. AUTH SCHEMAS ---
+class CardUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+class CardResponse(CardBase):
+    id: int
+    board_id: int
+    last_moved_at: datetime
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# --- 3. AUTH SCHEMAS ---
 
 class Token(BaseModel):
     access_token: str
@@ -2122,3 +2462,18 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+# --- 4. BOARD SCHEMAS ---
+
+class BoardBase(BaseModel):
+    title: str
+
+class BoardCreate(BoardBase):
+    pass
+
+class BoardResponse(BoardBase):
+    id: int
+    owner_id: int
+
+    class Config:
+        from_attributes = True

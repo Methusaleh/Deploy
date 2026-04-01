@@ -103,9 +103,24 @@ FILE: ./frontend/src\api\boards.js
 ==================================================
 import apiCLient from "./client";
 
-export const getBoards = async (userId) => {
-  const res = await apiCLient.get(`/users/${userId}/boards/`);
-  return res.data;
+const API_URL = "http://localhost:8000";
+
+export const getBoards = async () => {
+  const token = localStorage.getItem("token"); // Grab your saved token
+
+  const response = await fetch(`${API_URL}/boards/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`, // Send the token in the header
+    },
+  });
+
+  if (!response.ok) {
+    // If the token is expired or invalid, the backend returns 401
+    throw new Error("Failed to fetch boards");
+  }
+  return response.json();
 };
 
 export const getBoardCards = async (boardId) => {
@@ -138,6 +153,28 @@ export const deleteCard = async (cardId) => {
     method: "DELETE",
   });
   if (!response.ok) throw new Error("Failed to delete card");
+  return response.json();
+};
+
+==================================================
+FILE: ./frontend/src\api\cards.js
+==================================================
+const API_URL = "http://localhost:8000";
+
+export const getMyGlobalCards = async () => {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_URL}/cards/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch global cards");
+  }
   return response.json();
 };
 
@@ -348,6 +385,7 @@ import { useBoards } from "../context/BoardContext";
 import { getBoardCards, updateCard } from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
+import Home from "./Home";
 
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
@@ -422,11 +460,7 @@ function Board() {
 
   // 1. Guard for no board selected
   if (!activeBoard) {
-    return (
-      <section className={styles.empty}>
-        <p>Select a board from the sidebar to get started</p>
-      </section>
-    );
+    return <Home />;
   }
 
   // 2. Loading state (only show if we don't have cards yet)
@@ -1265,6 +1299,167 @@ FILE: ./frontend/src\components\Drawer.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\Home.jsx
+==================================================
+// frontend/src/components/Home.jsx
+import React, { useEffect, useState } from "react";
+import { getMyGlobalCards } from "../api/cards";
+import styles from "./Home.module.css";
+
+const Home = () => {
+  const [globalCards, setGlobalCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchGlobalData = async () => {
+      try {
+        const data = await getMyGlobalCards();
+        setGlobalCards(data);
+      } catch (err) {
+        console.error("Error loading dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGlobalData();
+  }, []);
+
+  if (loading)
+    return <div className={styles.loading}>Analyzing your workspace...</div>;
+
+  return (
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <h1>Welcome back, Aaron</h1>
+        <p>Here’s what’s happening across your projects.</p>
+      </header>
+
+      <section className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Tasks</span>
+          <span className={styles.statValue}>{globalCards.length}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Stale Tasks</span>
+          <span className={styles.statValue}>--</span>{" "}
+          {/* We'll calculate this tomorrow */}
+        </div>
+      </section>
+
+      <div className={styles.content}>
+        <div className={styles.feedSection}>
+          <h2>Global Feed</h2>
+          {globalCards.map((card) => (
+            <div key={card.id} className={styles.miniCard}>
+              <span
+                className={styles.priorityDot}
+                data-priority={card.priority}
+              ></span>
+              <div className={styles.cardInfo}>
+                <span className={styles.cardTitle}>{card.title}</span>
+                <span className={styles.cardMeta}>
+                  Board ID: {card.board_id} • {card.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Home;
+
+==================================================
+FILE: ./frontend/src\components\Home.module.css
+==================================================
+.container {
+  padding: 3rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  color: var(--text-primary);
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--accent-cyan); /* Using your Neon Cyan */
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.statCard {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.statValue {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+.miniCard {
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.miniCard:hover {
+  border-color: var(--border-subtle);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.priorityDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.priorityDot[data-priority="high"] {
+  background: #ff4d4d;
+}
+.priorityDot[data-priority="medium"] {
+  background: #ffcc00;
+}
+.priorityDot[data-priority="low"] {
+  background: var(--accent-cyan);
+}
+
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
 import { useBoards } from "../context/BoardContext";
@@ -1282,7 +1477,14 @@ function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.topSection}>
-        <h1 className={styles.logo}>Deploy</h1>
+        <h1
+          className={styles.logo}
+          onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
+        >
+          Deploy
+        </h1>
+
+        <div className={styles.sectionHeader}>My Boards</div>
         <nav className={styles.nav}>
           {boards.map((board) => (
             <button
@@ -1331,28 +1533,55 @@ FILE: ./frontend/src\components\Sidebar.module.css
   margin-bottom: 2rem;
 }
 
-.sidebar ul {
-  list-style: none;
+.sectionHeader {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin: 2rem 0 0.5rem 1rem; /* Space it out from the Logo */
+  opacity: 0.6;
 }
 
-.sidebar li {
-  padding: 0.6rem 1rem;
-  margin-bottom: 0.4rem;
+.logo {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 2rem;
+}
+
+.navItem {
+  width: 100%;
+  text-align: left;
+  padding: 0.8rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
+  font-size: 0.9rem;
   transition: all 0.2s ease;
 }
 
-.sidebar li:hover {
-  background-color: #222222;
+.navItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 
-.sidebar li.active {
+.navItem.active {
   background-color: #1e1e1e;
   color: var(--accent-cyan);
-  box-shadow: inset 2px 0 0 var(--accent-cyan);
+  border-color: var(--border-subtle);
+  box-shadow: inset 3px 0 0 var(--accent-cyan);
 }
 
 .logoutBtn {

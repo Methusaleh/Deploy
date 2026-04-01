@@ -1,0 +1,84 @@
+.container {
+  padding: 3rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  color: var(--text-primary);
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--accent-cyan); /* Using your Neon Cyan */
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.statCard {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.statValue {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+.miniCard {
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.miniCard:hover {
+  border-color: var(--border-subtle);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.priorityDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.priorityDot[data-priority="high"] {
+  background: #ff4d4d;
+}
+.priorityDot[data-priority="medium"] {
+  background: #ffcc00;
+}
+.priorityDot[data-priority="low"] {
+  background: var(--accent-cyan);
+}
+
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}

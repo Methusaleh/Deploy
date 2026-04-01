@@ -4,6 +4,7 @@ import { useBoards } from "../context/BoardContext";
 import { getBoardCards, updateCard } from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
+import Home from "./Home";
 
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
@@ -78,11 +79,7 @@ function Board() {
 
   // 1. Guard for no board selected
   if (!activeBoard) {
-    return (
-      <section className={styles.empty}>
-        <p>Select a board from the sidebar to get started</p>
-      </section>
-    );
+    return <Home />;
   }
 
   // 2. Loading state (only show if we don't have cards yet)

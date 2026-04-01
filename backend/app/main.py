@@ -239,6 +239,18 @@ async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
     cards = await crud.get_cards_by_board(db, board_id)
     return cards
 
+@app.get("/cards/me", response_model=List[schemas.CardResponse])
+async def read_my_global_cards(
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fetches all cards across all boards owned by the current user.
+    Used for the Home Dashboard Global Feed.
+    """
+    cards = await crud.get_all_user_cards(db, current_user.id)
+    return cards
+
 @app.patch("/cards/{card_id}/status/")
 async def update_card_status(card_id: int, new_status: str, db: AsyncSession = Depends(get_db)):
     updated_card = await crud.update_card_status(db, card_id, new_status)

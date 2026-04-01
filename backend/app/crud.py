@@ -34,6 +34,18 @@ async def get_cards_by_board(db: AsyncSession, board_id: int):
     result = await db.execute(query)
     return result.scalars().all()
 
+async def get_all_user_cards(db: AsyncSession, user_id: int):
+    # This joins the Boards and Cards tables 
+    # to find cards where the board's owner_id matches the user
+    query = (
+        select(models.Card)
+        .join(models.Board)
+        .where(models.Board.owner_id == user_id)
+        .order_by(models.Card.due_date.asc(), models.Card.last_moved_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
 async def update_card_status(db: AsyncSession, card_id: int, new_status: str):
     query = select(models.Card).where(models.Card.id == card_id)
     result = await db.execute(query)
