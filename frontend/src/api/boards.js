@@ -1,8 +1,23 @@
 import apiCLient from "./client";
 
-export const getBoards = async (userId) => {
-  const res = await apiCLient.get(`/users/${userId}/boards/`);
-  return res.data;
+const API_URL = "http://localhost:8000";
+
+export const getBoards = async () => {
+  const token = localStorage.getItem("token"); // Grab your saved token
+
+  const response = await fetch(`${API_URL}/boards/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`, // Send the token in the header
+    },
+  });
+
+  if (!response.ok) {
+    // If the token is expired or invalid, the backend returns 401
+    throw new Error("Failed to fetch boards");
+  }
+  return response.json();
 };
 
 export const getBoardCards = async (boardId) => {

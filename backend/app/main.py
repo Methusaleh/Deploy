@@ -1,16 +1,20 @@
 import socketio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm  
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer  
 from contextlib import asynccontextmanager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel # <--- Added back in
+from pydantic import BaseModel
+from jose import JWTError, jwt
+from typing import List
+from datetime import datetime, timezone
 
 # Local App Imports
 from .database import engine, get_db
 from . import models, schemas, auth_utils, crud
 from .models import Base
+import app.auth_utils as auth_utils
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
@@ -27,6 +31,40 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# --- AUTH DEPENDENCY ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: AsyncSession = Depends(get_db)
+):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        # 1. Decode the JWT using your auth_utils constants
+        payload = jwt.decode(
+            token, 
+            auth_utils.SECRET_KEY, 
+            algorithms=[auth_utils.ALGORITHM]
+        )
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    # 2. Look up the user in Neon
+    query = select(models.User).where(models.User.email == email)
+    result = await db.execute(query)
+    user = result.scalars().first()
+    
+    if user is None:
+        raise credentials_exception
+    return user
 
 # 3. CORS Setup
 origins = [
@@ -62,8 +100,6 @@ async def connect(sid, environ):
 async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
-
-# 5. Pydantic Schemas
 
 
 # 6. Routes
@@ -145,9 +181,20 @@ async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(
         print(f"Registration Error: {e}")
         raise HTTPException(status_code=500, detail="Database error during registration")
 
-@app.post("/boards/")
-async def post_board(title: str, owner_id: int, db: AsyncSession = Depends(get_db)):
-    return await crud.create_board(db=db, title=title, owner_id=owner_id)
+@app.post("/boards/", response_model=schemas.BoardResponse)
+async def create_new_board(
+    board_in: schemas.BoardCreate, 
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    new_board = models.Board(
+        title=board_in.title,
+        owner_id=current_user.id  # Automatically sets the owner to YOU
+    )
+    db.add(new_board)
+    await db.commit()
+    await db.refresh(new_board)
+    return new_board
 
 @app.post("/cards/")
 async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
@@ -177,10 +224,15 @@ async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(ge
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/users/{user_id}/boards/")
-async def read_user_boards(user_id: int, db: AsyncSession = Depends(get_db)):
-    boards = await crud.get_boards_by_user(db, user_id)
-    return boards
+@app.get("/boards/me", response_model=List[schemas.BoardResponse])
+async def get_my_boards(
+    current_user: models.User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    # This ensures users ONLY see boards where they are the owner
+    query = select(models.Board).where(models.Board.owner_id == current_user.id)
+    result = await db.execute(query)
+    return result.scalars().all()
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -228,7 +280,7 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/cards/{card_id}")
+@app.put("/cards/{card_id}", response_model=schemas.CardResponse)
 async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
@@ -237,6 +289,18 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         raise HTTPException(status_code=404, detail="Card not found")
     
     update_data = card_update.model_dump(exclude_unset=True)
+    
+    # LOGIC: If status is changing, update the 'Last Moved' timestamp
+    if "status" in update_data and update_data["status"] != card.status:
+        card.last_moved_at = datetime.now(timezone.utc)
+        
+        # LOGIC: If moved to 'Done', set completion date. If moved OUT of Done, clear it.
+        if update_data["status"].lower() == "done":
+            card.completed_at = datetime.now(timezone.utc)
+        else:
+            card.completed_at = None
+
+    # Apply all other updates
     for key, value in update_data.items():
         setattr(card, key, value)
 
@@ -244,17 +308,23 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         await db.commit()
         await db.refresh(card)
 
-        # 1. Targeted Broadcast: Only send to the specific board room
+        # Broadcast the update to the board room
         await sio.emit("card_updated", {
             "id": card.id,
             "title": card.title,
             "description": card.description,
             "status": card.status,
             "priority": card.priority,
-            "board_id": card.board_id
-        }, room=str(card.board_id)) # <--- This is the key change
+            "board_id": card.board_id,
+            "last_moved_at": card.last_moved_at.isoformat() if card.last_moved_at else None
+        }, room=str(card.board_id))
         
         return card
+
+    except Exception as e:
+        await db.rollback()
+        print(f"Database Error: {e}")
+        raise HTTPException(status_code=500, detail="Database update failed")
 
     except Exception as e:
         await db.rollback()

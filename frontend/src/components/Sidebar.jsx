@@ -13,7 +13,14 @@ function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.topSection}>
-        <h1 className={styles.logo}>Deploy</h1>
+        <h1
+          className={styles.logo}
+          onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
+        >
+          Deploy
+        </h1>
+
+        <div className={styles.sectionHeader}>My Boards</div>
         <nav className={styles.nav}>
           {boards.map((board) => (
             <button

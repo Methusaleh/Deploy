@@ -19,22 +19,38 @@ class UserResponse(UserBase):
     created_at: datetime
 
     class Config:
-        from_attributes = True # Allows Pydantic to read SQLAlchemy models
+        from_attributes = True 
 
-class CardUpdate(BaseModel):
-    title: str = None
-    description: str = None
-    status: str = None
-    priority: str = None
+# --- 2. CARD SCHEMAS ---
 
-class CardCreate(BaseModel):
+# This is the "Parent" schema to avoid repeating fields
+class CardBase(BaseModel):
     title: str
-    description: str = None
-    status: str = "Backlog"
-    priority: str = "low"
+    description: Optional[str] = None
+    status: Optional[str] = "Backlog"
+    priority: Optional[str] = "low"
+
+class CardCreate(CardBase):
     board_id: int
 
-# --- 2. AUTH SCHEMAS ---
+class CardUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+class CardResponse(CardBase):
+    id: int
+    board_id: int
+    last_moved_at: datetime
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# --- 3. AUTH SCHEMAS ---
 
 class Token(BaseModel):
     access_token: str
@@ -42,3 +58,18 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+# --- 4. BOARD SCHEMAS ---
+
+class BoardBase(BaseModel):
+    title: str
+
+class BoardCreate(BoardBase):
+    pass
+
+class BoardResponse(BoardBase):
+    id: int
+    owner_id: int
+
+    class Config:
+        from_attributes = True

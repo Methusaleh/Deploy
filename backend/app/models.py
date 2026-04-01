@@ -3,10 +3,12 @@ from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
 
+# 1. Define the Base class here instead of importing it
+# This is the modern SQLAlchemy 2.0 way.
 class Base(DeclarativeBase):
     pass
 
-# --- 1. NEW ASSOCIATION TABLE ---
+# --- 2. ASSOCIATION TABLE ---
 # This links users to boards they have been invited to.
 board_members = Table(
     "board_members",
@@ -20,10 +22,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    # Set nullable=True so Google users aren't forced to have a local password
     hashed_password = Column(String, nullable=True) 
     
-    # NEW: For Google Login later
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
 
@@ -35,13 +35,12 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    # Relationships (kept from previous step)
+    # Relationships
     owned_boards = relationship("Board", back_populates="owner", cascade="all, delete-orphan")
     shared_boards = relationship("Board", secondary=board_members, back_populates="members")
 
     @validates('handle')
     def validate_handle(self, key, value):
-        # Your regex logic is great—keeping it!
         if not value and self.first_name and self.last_name:
             clean_first = re.sub(r'\W+', '', self.first_name.lower())
             clean_last = re.sub(r'\W+', '', self.last_name.lower())
@@ -57,10 +56,7 @@ class Board(Base):
 
     # Relationships
     owner = relationship("User", back_populates="owned_boards")
-    
-    # This links back to the User's shared_boards
     members = relationship("User", secondary=board_members, back_populates="shared_boards")
-    
     cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
 
 class Card(Base):
@@ -71,6 +67,11 @@ class Card(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
     priority = Column(String, default="low")
-    board_id = Column(Integer, ForeignKey("boards.id"))
     
+    # Time-tracking fields for Dashboard/Stale logic
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    last_moved_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")

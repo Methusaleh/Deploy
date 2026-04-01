@@ -16,6 +16,25 @@
   margin-bottom: 2rem;
 }
 
+.sectionHeader {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin: 2rem 0 0.5rem 1rem; /* Space it out from the Logo */
+  opacity: 0.6;
+}
+
+.logo {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
 .nav {
   display: flex;
   flex-direction: column;
