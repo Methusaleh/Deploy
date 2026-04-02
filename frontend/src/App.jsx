@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar";
 import Board from "./components/Board";
 import Drawer from "./components/Drawer";
 import Auth from "./components/Auth";
+import UserMenu from "./components/UserMenu";
 
 function App() {
   const { status, boards, selectedCard } = useBoards();
@@ -15,6 +16,11 @@ function App() {
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    window.location.reload(); // Hard refresh to reset the state
   };
 
   if (!isAuthenticated) {
@@ -28,11 +34,7 @@ function App() {
   return (
     <div className="app-container">
       <Sidebar />
-      {/* Added style properties here to:
-          1. flex: 1 -> Fill the remaining width next to Sidebar
-          2. display: flex -> Allow internal components to layout properly
-          3. minWidth: 0 -> Prevent the grid from pushing the sidebar off-screen
-      */}
+      <UserMenu onLogout={handleLogout} />
       <main
         className={`board-view ${selectedCard ? "dimmed" : ""}`}
         style={{

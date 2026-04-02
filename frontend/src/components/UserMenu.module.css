@@ -1,0 +1,100 @@
+.userMenuContainer {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000; /* Ensured it sits above the sidebar and drawers */
+}
+
+.avatarCircle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+}
+
+.avatarCircle:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.dropdown {
+  position: absolute;
+  top: 55px;
+  right: 0;
+  background: #111; /* Darker background for higher contrast */
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 200px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.userInfo {
+  padding: 8px 12px;
+}
+
+.userName {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.userRole {
+  margin: 2px 0 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(
+    255,
+    255,
+    255,
+    0.05
+  ); /* Subtle border matching our new style */
+  margin: 12px 0;
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: #ff4d4d; /* Danger Red */
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.logoutBtn:hover {
+  background: rgba(255, 77, 77, 0.1);
+}
