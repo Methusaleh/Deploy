@@ -42,7 +42,6 @@
   color: var(--accent-cyan);
 }
 
-/* Fixed the typo from .colunTitle to .columnTitle */
 .columnTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -59,60 +58,45 @@
   border-radius: 12px;
 }
 
+/* --- UPDATED CARDLIST & SCROLLBAR --- */
+
 .cardList {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 10px;
-  /* Fixed padding-right creates the 'permanent' gutter so cards never jump */
   padding-right: 12px;
-  overflow-y: overlay;
+  /* Changed 'overlay' to 'auto' for better browser support/consistency */
+  overflow-y: auto;
   min-height: 200px;
   max-height: calc(100vh - 200px);
   transition: background-color 0.2s ease;
 
-  /* Firefox: Slim and subtle */
+  /* Firefox Support: Styled to match the Dashboard */
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: stable both-edges; /* Always reserve space for the scrollbar */
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* Firefox: Reveal on hover */
-.cardList:hover {
-  scrollbar-color: var(--accent-magenta) transparent;
-}
-
-/* --- Chrome/Safari/Edge (Webkit) --- */
+/* Chrome/Safari/Edge (Webkit) */
 
 .cardList::-webkit-scrollbar {
-  width: 8px; /* Fixed width so space is always reserved */
-  display: block; /* Always 'exists' in the layout */
-  background: transparent;
+  width: 8px; /* Matches Home component exactly */
 }
 
 .cardList::-webkit-scrollbar-track {
-  /* This is the key: The track is ALWAYS invisible, matching the background */
-  background: rgba(0, 0, 0, 0) !important; /* Forces transparency */
-  border: none;
+  background: transparent;
 }
 
 .cardList::-webkit-scrollbar-thumb {
-  /* Start invisible */
-  background-color: transparent;
+  /* Using the subtle border color as the default state */
+  background-color: var(--border-subtle);
   border-radius: 20px;
-  /* Adds a little 'margin' inside the scrollbar area to look thinner */
+  /* Padding trick: makes the bar look thinner and floating */
   border: 2px solid transparent;
   background-clip: content-box;
-  box-shadow: none;
-  transition: background-color 0.3s;
 }
 
-/* When the user hovers over the COLUMN, the grab bar appears */
-.cardList:hover::-webkit-scrollbar-thumb {
-  background-color: var(--accent-magenta);
-}
-
-/* Optional: Make it even brighter when they actually grab the scrollbar */
+/* Neon Cyan reveals when you hover over the bar itself */
 .cardList::-webkit-scrollbar-thumb:hover {
   background-color: var(--accent-cyan);
 }

@@ -201,8 +201,8 @@ async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(ge
     new_card = models.Card(
         title=card_in.title,
         description=card_in.description,
-        status=card_in.status,
-        priority=card_in.priority,
+        status=card_in.status.lower(), # [cite: 285] Force lowercase
+        priority=card_in.priority.lower(),
         board_id=card_in.board_id
     )
     db.add(new_card)
@@ -300,19 +300,29 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
+    # 1. Extract the update data
     update_data = card_update.model_dump(exclude_unset=True)
-    
-    # LOGIC: If status is changing, update the 'Last Moved' timestamp
+
+    # 2. NEW: Force lowercase on status and priority immediately
+    if "status" in update_data and update_data["status"]:
+        update_data["status"] = update_data["status"].lower()
+
+    if "priority" in update_data and update_data["priority"]:
+        update_data["priority"] = update_data["priority"].lower()
+        
+    # 3. EXISTING LOGIC: If status is changing, update the 'Last Moved' timestamp
+    # Note: Now comparing lowercase 'deploy' or 'done'
     if "status" in update_data and update_data["status"] != card.status:
         card.last_moved_at = datetime.now(timezone.utc)
         
-        # LOGIC: If moved to 'Done', set completion date. If moved OUT of Done, clear it.
-        if update_data["status"].lower() == "done":
+        # Updated to check for both 'done' and 'deploy' as "completed" states
+        current_status = update_data["status"]
+        if current_status == "done" or current_status == "deploy":
             card.completed_at = datetime.now(timezone.utc)
         else:
             card.completed_at = None
 
-    # Apply all other updates
+    # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
         setattr(card, key, value)
 

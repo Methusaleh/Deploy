@@ -8,11 +8,11 @@ import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
 import Board from "./components/Board";
 import Drawer from "./components/Drawer";
-import Auth from "./components/Auth"; // Import your new component
+import Auth from "./components/Auth";
 
 function App() {
   const { status, boards, selectedCard } = useBoards();
-  // Check localStorage for an existing token [cite: 258]
+
   const [isAuthenticated, setIsAuthenticated] = useState(
     !!localStorage.getItem("token"),
   );
@@ -21,19 +21,33 @@ function App() {
     setIsAuthenticated(true);
   };
 
-  // If not logged in, show ONLY the Auth component
   if (!isAuthenticated) {
     return <Auth onLoginSuccess={handleLoginSuccess} />;
   }
 
   if (status === "loading" && boards.length === 0) {
-    return <div className="loading-screen">Loading...</div>; // [cite: 232]
+    return <div className="loading-screen">Loading...</div>;
   }
 
   return (
     <div className="app-container">
       <Sidebar />
-      <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
+      {/* Added style properties here to:
+          1. flex: 1 -> Fill the remaining width next to Sidebar
+          2. display: flex -> Allow internal components to layout properly
+          3. minWidth: 0 -> Prevent the grid from pushing the sidebar off-screen
+      */}
+      <main
+        className={`board-view ${selectedCard ? "dimmed" : ""}`}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          height: "100vh",
+          overflow: "hidden",
+        }}
+      >
         <Board />
       </main>
       <Drawer key={selectedCard?.id || "empty"} />
@@ -805,7 +819,6 @@ FILE: ./frontend/src\components\Column.module.css
   color: var(--accent-cyan);
 }
 
-/* Fixed the typo from .colunTitle to .columnTitle */
 .columnTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -822,60 +835,45 @@ FILE: ./frontend/src\components\Column.module.css
   border-radius: 12px;
 }
 
+/* --- UPDATED CARDLIST & SCROLLBAR --- */
+
 .cardList {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 10px;
-  /* Fixed padding-right creates the 'permanent' gutter so cards never jump */
   padding-right: 12px;
-  overflow-y: overlay;
+  /* Changed 'overlay' to 'auto' for better browser support/consistency */
+  overflow-y: auto;
   min-height: 200px;
   max-height: calc(100vh - 200px);
   transition: background-color 0.2s ease;
 
-  /* Firefox: Slim and subtle */
+  /* Firefox Support: Styled to match the Dashboard */
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: stable both-edges; /* Always reserve space for the scrollbar */
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* Firefox: Reveal on hover */
-.cardList:hover {
-  scrollbar-color: var(--accent-magenta) transparent;
-}
-
-/* --- Chrome/Safari/Edge (Webkit) --- */
+/* Chrome/Safari/Edge (Webkit) */
 
 .cardList::-webkit-scrollbar {
-  width: 8px; /* Fixed width so space is always reserved */
-  display: block; /* Always 'exists' in the layout */
-  background: transparent;
+  width: 8px; /* Matches Home component exactly */
 }
 
 .cardList::-webkit-scrollbar-track {
-  /* This is the key: The track is ALWAYS invisible, matching the background */
-  background: rgba(0, 0, 0, 0) !important; /* Forces transparency */
-  border: none;
+  background: transparent;
 }
 
 .cardList::-webkit-scrollbar-thumb {
-  /* Start invisible */
-  background-color: transparent;
+  /* Using the subtle border color as the default state */
+  background-color: var(--border-subtle);
   border-radius: 20px;
-  /* Adds a little 'margin' inside the scrollbar area to look thinner */
+  /* Padding trick: makes the bar look thinner and floating */
   border: 2px solid transparent;
   background-clip: content-box;
-  box-shadow: none;
-  transition: background-color 0.3s;
 }
 
-/* When the user hovers over the COLUMN, the grab bar appears */
-.cardList:hover::-webkit-scrollbar-thumb {
-  background-color: var(--accent-magenta);
-}
-
-/* Optional: Make it even brighter when they actually grab the scrollbar */
+/* Neon Cyan reveals when you hover over the bar itself */
 .cardList::-webkit-scrollbar-thumb:hover {
   background-color: var(--accent-cyan);
 }
@@ -1304,10 +1302,12 @@ FILE: ./frontend/src\components\Home.jsx
 // frontend/src/components/Home.jsx
 import React, { useEffect, useState } from "react";
 import { getMyGlobalCards } from "../api/cards";
+import { useBoards } from "../context/BoardContext";
 import styles from "./Home.module.css";
 
 const Home = () => {
   const [globalCards, setGlobalCards] = useState([]);
+  const { boards, dispatch } = useBoards(); // We need boards to show names/progress
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1324,42 +1324,130 @@ const Home = () => {
     fetchGlobalData();
   }, []);
 
+  // --- WIDGET LOGIC ---
+
+  // 1. Urgent Widget: Top 5 High Priority
+  const urgentTasks = globalCards
+    .filter((c) => c.priority === "high" && c.status !== "Done")
+    .slice(0, 5);
+
+  // 2. Recent Widget: Last 5 items moved
+  const recentTasks = [...globalCards]
+    .sort((a, b) => new Date(b.last_moved_at) - new Date(a.last_moved_at))
+    .slice(0, 5);
+
+  // 3. Project Health: Grouping by Board
+  const completedTasksCount = globalCards.filter(
+    (c) => c.status === "Done" || c.status === "Deploy",
+  ).length;
+
+  // 3. Project Health: Grouping by Board
+  const boardHealth = boards.map((board) => {
+    const boardCards = globalCards.filter((c) => c.board_id === board.id);
+
+    // Update this line to include "Deploy"
+    const completed = boardCards.filter((c) => {
+      const status = c.status?.toLowerCase() || "";
+      // This catches "Done", "Deploy", "Completed", "Finished", etc.
+      return status === "done" || status === "deploy" || status === "completed";
+    }).length;
+
+    const progress =
+      boardCards.length > 0
+        ? Math.round((completed / boardCards.length) * 100)
+        : 0;
+
+    return { ...board, progress, total: boardCards.length };
+  });
+
   if (loading)
-    return <div className={styles.loading}>Analyzing your workspace...</div>;
+    return (
+      <div className={styles.loading}>Initializing Mission Control...</div>
+    );
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>Welcome back, Aaron</h1>
-        <p>Here’s what’s happening across your projects.</p>
+        <h1>Mission Control</h1>
+        <p>Overview for {new Date().toLocaleDateString()}</p>
       </header>
 
+      {/* STATS ROW */}
       <section className={styles.statsGrid}>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>Total Tasks</span>
           <span className={styles.statValue}>{globalCards.length}</span>
         </div>
         <div className={styles.statCard}>
-          <span className={styles.statLabel}>Stale Tasks</span>
-          <span className={styles.statValue}>--</span>{" "}
-          {/* We'll calculate this tomorrow */}
+          <span className={styles.statLabel}>Completed</span>
+          <span className={styles.statValue}>{completedTasksCount}</span>
         </div>
       </section>
 
-      <div className={styles.content}>
-        <div className={styles.feedSection}>
-          <h2>Global Feed</h2>
-          {globalCards.map((card) => (
-            <div key={card.id} className={styles.miniCard}>
-              <span
-                className={styles.priorityDot}
-                data-priority={card.priority}
-              ></span>
-              <div className={styles.cardInfo}>
-                <span className={styles.cardTitle}>{card.title}</span>
-                <span className={styles.cardMeta}>
-                  Board ID: {card.board_id} • {card.status}
-                </span>
+      {/* BENTO GRID */}
+      <div className={styles.bentoGrid}>
+        {/* WIDGET: RECENT ACTIVITY */}
+        <div className={styles.widget}>
+          <h3>Recent Activity</h3>
+          <div className={styles.recentList}>
+            {recentTasks.map((task) => {
+              const boardObj = boards?.find((b) => b.id === task.board_id);
+              const boardName = boardObj ? boardObj.title : "Loading...";
+              return (
+                <div
+                  key={task.id}
+                  className={styles.miniCard}
+                  onClick={() =>
+                    boardObj &&
+                    dispatch({ type: "setActiveBoard", payload: boardObj })
+                  }
+                >
+                  <div className={styles.cardInfo}>
+                    <p className={styles.cardTitle}>{task.title}</p>
+                    <p className={styles.cardMeta}>
+                      Moved to{" "}
+                      <span className={styles.statusPill}>{task.status}</span>{" "}
+                      in {boardName}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className={styles.widget}>
+          <h3>Urgent (High Priority)</h3>
+          {urgentTasks.map((task) => (
+            <div
+              key={task.id}
+              className={styles.miniCard}
+              onClick={() =>
+                dispatch({
+                  type: "setActiveBoard",
+                  payload: boards.find((b) => b.id === task.board_id),
+                })
+              }
+            >
+              <span className={styles.priorityDot} data-priority="high"></span>
+              <p>{task.title}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* WIDGET: PROJECT HEALTH */}
+        <div className={styles.widget}>
+          <h3>Project Health</h3>
+          {boardHealth.map((project) => (
+            <div key={project.id} className={styles.healthRow}>
+              <div className={styles.healthInfo}>
+                <span>{project.title}</span>
+                <span>{project.progress}%</span>
+              </div>
+              <div className={styles.progressBar}>
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${project.progress}%` }}
+                ></div>
               </div>
             </div>
           ))}
@@ -1375,88 +1463,133 @@ export default Home;
 FILE: ./frontend/src\components\Home.module.css
 ==================================================
 .container {
-  padding: 3rem;
-  max-width: 1000px;
-  margin: 0 auto;
+  padding: 2.5rem;
+  /* Use the full width minus the sidebar */
+  width: 100%;
+  /* Fix: Let the App.jsx container handle the main scroll if needed */
+  height: 100%;
+  overflow-y: auto;
   color: var(--text-primary);
 }
 
+.header {
+  margin-bottom: 2rem;
+}
+
 .header h1 {
-  font-size: 2rem;
+  color: var(--accent-cyan);
+  font-size: 2.5rem;
   margin-bottom: 0.5rem;
-  color: var(--accent-cyan); /* Using your Neon Cyan */
+  text-shadow: 0 0 15px rgba(0, 245, 255, 0.2);
 }
 
 .statsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex; /* Use flex for the top row so they sit side-by-side */
   gap: 1.5rem;
-  margin: 2rem 0;
+  margin-bottom: 2rem;
 }
 
-.statCard {
+.bentoGrid {
+  display: grid;
+  /* Force two columns even on smaller screens for now */
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.cardTitle {
+  font-weight: 500;
+  margin: 0;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.statusPill {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.widget {
   background: var(--bg-secondary);
   padding: 1.5rem;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
+  max-height: 400px; /* Limits height to keep things on one screen */
+  min-height: 300px;
+  overflow: hidden;
 }
 
-.statLabel {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+.widget h3 {
+  font-size: 0.9rem;
   text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
   letter-spacing: 1px;
 }
 
-.statValue {
-  font-size: 2rem;
-  font-weight: bold;
-  margin-top: 0.5rem;
+/* HEALTH BAR STYLES */
+.healthRow {
+  margin-bottom: 1.25rem;
+}
+
+.healthInfo {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.progressBar {
+  height: 6px;
+  background: #1a1a1a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan);
+  transition: width 0.5s ease-in-out;
 }
 
 .miniCard {
   background: rgba(255, 255, 255, 0.03);
-  margin-bottom: 0.75rem;
-  padding: 1rem;
-  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 10px;
+  cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.2s;
 }
 
 .miniCard:hover {
+  background: rgba(255, 255, 255, 0.06);
   border-color: var(--border-subtle);
-  background: rgba(255, 255, 255, 0.05);
 }
 
-.priorityDot {
+/* Hide that generic white scrollbar by matching it to your board style */
+.container::-webkit-scrollbar {
   width: 8px;
-  height: 8px;
-  border-radius: 50%;
 }
 
-.priorityDot[data-priority="high"] {
-  background: #ff4d4d;
-}
-.priorityDot[data-priority="medium"] {
-  background: #ffcc00;
-}
-.priorityDot[data-priority="low"] {
-  background: var(--accent-cyan);
-}
-
-.cardInfo {
-  display: flex;
-  flex-direction: column;
-}
-
-.cardMeta {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+.container::-webkit-scrollbar-thumb {
+  background-color: var(--border-subtle);
+  border-radius: 20px;
 }
 
 ==================================================

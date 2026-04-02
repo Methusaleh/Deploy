@@ -1453,12 +1453,31 @@ FILE: ./frontend/src\components\Home.module.css
   max-width: 1000px;
   margin: 0 auto;
   color: var(--text-primary);
+  /* Fix: Allow the home container to scroll if content overflows */
+  height: 100vh;
+  overflow-y: auto;
+  /* Smooth scrolling for a premium feel */
+  scroll-behavior: smooth;
+}
+
+.container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.container::-webkit-scrollbar-thumb {
+  background-color: var(--border-subtle);
+  border-radius: 20px;
+}
+
+.container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-cyan);
 }
 
 .header h1 {
-  font-size: 2rem;
+  font-size: 2.5rem;
   margin-bottom: 0.5rem;
-  color: var(--accent-cyan); /* Using your Neon Cyan */
+  color: var(--accent-cyan); /* Neon Cyan [cite: 314] */
+  text-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
 }
 
 .statsGrid {
@@ -1491,36 +1510,47 @@ FILE: ./frontend/src\components\Home.module.css
 }
 
 .miniCard {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-secondary);
   margin-bottom: 0.75rem;
-  padding: 1rem;
-  border-radius: 8px;
+  padding: 1.25rem;
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  border: 1px solid transparent;
-  transition: all 0.2s;
+  gap: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .miniCard:hover {
-  border-color: var(--border-subtle);
+  transform: translateX(5px);
+  border-color: #444;
   background: rgba(255, 255, 255, 0.05);
 }
 
 .priorityDot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .priorityDot[data-priority="high"] {
-  background: #ff4d4d;
+  background-color: #ff007f;
+  box-shadow: 0 0 8px rgba(255, 0, 127, 0.6);
 }
+
+/* Medium Priority: Neon Green [cite: 405, 410] */
 .priorityDot[data-priority="medium"] {
-  background: #ffcc00;
+  background-color: #39ff14;
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
 }
+
+/* Low Priority: Cyan [cite: 406, 411] */
 .priorityDot[data-priority="low"] {
-  background: var(--accent-cyan);
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 245, 255, 0.6);
 }
 
 .cardInfo {
@@ -1531,6 +1561,16 @@ FILE: ./frontend/src\components\Home.module.css
 .cardMeta {
   font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+.feedSection h2 {
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.5rem;
 }
 
 ==================================================
@@ -2178,8 +2218,8 @@ async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(ge
     new_card = models.Card(
         title=card_in.title,
         description=card_in.description,
-        status=card_in.status,
-        priority=card_in.priority,
+        status=card_in.status.lower(), # [cite: 285] Force lowercase
+        priority=card_in.priority.lower(),
         board_id=card_in.board_id
     )
     db.add(new_card)
@@ -2277,19 +2317,29 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
+    # 1. Extract the update data
     update_data = card_update.model_dump(exclude_unset=True)
-    
-    # LOGIC: If status is changing, update the 'Last Moved' timestamp
+
+    # 2. NEW: Force lowercase on status and priority immediately
+    if "status" in update_data and update_data["status"]:
+        update_data["status"] = update_data["status"].lower()
+
+    if "priority" in update_data and update_data["priority"]:
+        update_data["priority"] = update_data["priority"].lower()
+        
+    # 3. EXISTING LOGIC: If status is changing, update the 'Last Moved' timestamp
+    # Note: Now comparing lowercase 'deploy' or 'done'
     if "status" in update_data and update_data["status"] != card.status:
         card.last_moved_at = datetime.now(timezone.utc)
         
-        # LOGIC: If moved to 'Done', set completion date. If moved OUT of Done, clear it.
-        if update_data["status"].lower() == "done":
+        # Updated to check for both 'done' and 'deploy' as "completed" states
+        current_status = update_data["status"]
+        if current_status == "done" or current_status == "deploy":
             card.completed_at = datetime.now(timezone.utc)
         else:
             card.completed_at = None
 
-    # Apply all other updates
+    # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
         setattr(card, key, value)
 

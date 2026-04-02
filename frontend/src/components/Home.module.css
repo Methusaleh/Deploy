@@ -1,15 +1,262 @@
 .container {
-  padding: 3rem;
-  max-width: 1000px;
-  margin: 0 auto;
-  color: var(--text-primary);
-  /* Fix: Allow the home container to scroll if content overflows */
-  height: 100vh;
+  padding: 2.5rem;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
-  /* Smooth scrolling for a premium feel */
-  scroll-behavior: smooth;
+  color: var(--text-primary);
 }
 
+/* --- HEADER & DATE --- */
+
+.header {
+  margin-bottom: 2.5rem;
+  position: relative;
+}
+
+.header h1 {
+  color: var(--accent-cyan);
+  font-size: 2.8rem;
+  margin-bottom: 0.2rem;
+  text-shadow: 0 0 15px rgba(0, 245, 255, 0.2);
+  letter-spacing: -1px;
+}
+
+.dateDisplay {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+/* MISSION CONTROL PULSE */
+.pulse {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  margin-right: 12px;
+  box-shadow: 0 0 10px var(--accent-cyan);
+  animation: pulseNeon 2s infinite;
+}
+
+@keyframes pulseNeon {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- STAT CARDS --- */
+
+.statsGrid {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.statCard {
+  background: linear-gradient(145deg, #1a1a1a, #121212);
+  padding: 1.5rem 2rem;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: 1;
+  transition:
+    transform 0.2s ease,
+    border-color 0.3s ease;
+}
+
+.statCard:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.statIcon {
+  font-size: 1.8rem;
+  opacity: 0.3;
+  color: var(--text-primary);
+}
+
+.statContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.statValue {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+/* COLOR LOGIC FOR STATS */
+.statCard[data-type="total"] .statValue {
+  color: #ff007f; /* Neon Magenta */
+  text-shadow: 0 0 20px rgba(255, 0, 127, 0.3);
+}
+
+.statCard[data-type="completed"] .statValue {
+  color: #39ff14; /* Neon Green */
+  text-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+}
+
+/* --- BENTO GRID --- */
+
+.bentoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 320px;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.widget {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.widget h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  margin-bottom: 1.25rem;
+  letter-spacing: 1.5px;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+  padding-bottom: 0.8rem;
+}
+
+.widgetContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+/* Custom internal scrollbar for widgets */
+.widgetContent::-webkit-scrollbar {
+  width: 4px;
+}
+.widgetContent::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 10px;
+}
+
+/* 4th Widget Styling (Quick Links) */
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.shortcutBtn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  padding: 1.2rem;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.shortcutBtn:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.05);
+  color: var(--accent-cyan);
+  transform: translateY(-2px);
+}
+
+/* --- CARDS & HEALTH BARS --- */
+
+.cardTitle {
+  font-weight: 500;
+  margin: 0;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.statusPill {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.healthRow {
+  margin-bottom: 1.5rem;
+}
+
+.healthInfo {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+}
+
+.progressBar {
+  height: 8px;
+  background: #111;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.progressFill {
+  height: 100%;
+  background: #39ff14; /* Neon Green for completion */
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.miniCard {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.miniCard:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
+}
+
+/* MISSION CONTROL GLOBAL SCROLLBAR */
 .container::-webkit-scrollbar {
   width: 8px;
 }
@@ -17,108 +264,4 @@
 .container::-webkit-scrollbar-thumb {
   background-color: var(--border-subtle);
   border-radius: 20px;
-}
-
-.container::-webkit-scrollbar-thumb:hover {
-  background-color: var(--accent-cyan);
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  margin-bottom: 0.5rem;
-  color: var(--accent-cyan); /* Neon Cyan [cite: 314] */
-  text-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
-}
-
-.statsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-  margin: 2rem 0;
-}
-
-.statCard {
-  background: var(--bg-secondary);
-  padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-}
-
-.statLabel {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.statValue {
-  font-size: 2rem;
-  font-weight: bold;
-  margin-top: 0.5rem;
-}
-
-.miniCard {
-  background: var(--bg-secondary);
-  margin-bottom: 0.75rem;
-  padding: 1.25rem;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  border: 1px solid var(--border-subtle);
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.miniCard:hover {
-  transform: translateX(5px);
-  border-color: #444;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.priorityDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.priorityDot[data-priority="high"] {
-  background-color: #ff007f;
-  box-shadow: 0 0 8px rgba(255, 0, 127, 0.6);
-}
-
-/* Medium Priority: Neon Green [cite: 405, 410] */
-.priorityDot[data-priority="medium"] {
-  background-color: #39ff14;
-  box-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
-}
-
-/* Low Priority: Cyan [cite: 406, 411] */
-.priorityDot[data-priority="low"] {
-  background-color: var(--accent-cyan);
-  box-shadow: 0 0 8px rgba(0, 245, 255, 0.6);
-}
-
-.cardInfo {
-  display: flex;
-  flex-direction: column;
-}
-
-.cardMeta {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.feedSection h2 {
-  font-size: 1.2rem;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text-secondary);
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 0.5rem;
 }
