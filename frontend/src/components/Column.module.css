@@ -42,6 +42,12 @@
   color: var(--accent-cyan);
 }
 
+.titleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .columnTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -51,11 +57,13 @@
 }
 
 .count {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--text-secondary);
-  background-color: #222;
+  background-color: rgba(255, 255, 255, 0.05);
   padding: 2px 8px;
   border-radius: 12px;
+  border: 1px solid var(--border-subtle);
 }
 
 /* --- UPDATED CARDLIST & SCROLLBAR --- */

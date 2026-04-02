@@ -293,7 +293,12 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/cards/{card_id}", response_model=schemas.CardResponse)
-async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSession = Depends(get_db)):
+async def update_card(
+    card_id: int, 
+    card_update: schemas.CardUpdate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user) # Needed to know who to notify
+):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
     
@@ -303,24 +308,33 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
     # 1. Extract the update data
     update_data = card_update.model_dump(exclude_unset=True)
 
-    # 2. NEW: Force lowercase on status and priority immediately
+    # 2. Force lowercase on status and priority immediately
     if "status" in update_data and update_data["status"]:
         update_data["status"] = update_data["status"].lower()
 
     if "priority" in update_data and update_data["priority"]:
         update_data["priority"] = update_data["priority"].lower()
         
-    # 3. EXISTING LOGIC: If status is changing, update the 'Last Moved' timestamp
-    # Note: Now comparing lowercase 'deploy' or 'done'
+    # 3. STATUS CHANGE LOGIC: Timestamps + Notifications
     if "status" in update_data and update_data["status"] != card.status:
+        old_status = card.status
+        new_status = update_data["status"]
         card.last_moved_at = datetime.now(timezone.utc)
         
-        # Updated to check for both 'done' and 'deploy' as "completed" states
-        current_status = update_data["status"]
-        if current_status == "done" or current_status == "deploy":
+        # Update completion dates
+        if new_status in ["done", "deploy"]:
             card.completed_at = datetime.now(timezone.utc)
         else:
             card.completed_at = None
+
+        # JIRA LOGIC: Create an automated notification for the Inbox
+        new_notification = models.Notification(
+            type="status_change",
+            message=f"Task '{card.title}' moved from {old_status} to {new_status}",
+            user_id=current_user.id, 
+            card_id=card.id
+        )
+        db.add(new_notification)
 
     # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
@@ -330,7 +344,7 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         await db.commit()
         await db.refresh(card)
 
-        # Broadcast the update to the board room
+        # Broadcast the update to the board room via Socket.io
         await sio.emit("card_updated", {
             "id": card.id,
             "title": card.title,
@@ -342,11 +356,6 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         }, room=str(card.board_id))
         
         return card
-
-    except Exception as e:
-        await db.rollback()
-        print(f"Database Error: {e}")
-        raise HTTPException(status_code=500, detail="Database update failed")
 
     except Exception as e:
         await db.rollback()

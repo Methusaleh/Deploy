@@ -82,11 +82,12 @@ import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
 import Board from "./components/Board";
 import Drawer from "./components/Drawer";
-import Auth from "./components/Auth"; // Import your new component
+import Auth from "./components/Auth";
+import UserMenu from "./components/UserMenu";
 
 function App() {
   const { status, boards, selectedCard } = useBoards();
-  // Check localStorage for an existing token [cite: 258]
+
   const [isAuthenticated, setIsAuthenticated] = useState(
     !!localStorage.getItem("token"),
   );
@@ -95,19 +96,34 @@ function App() {
     setIsAuthenticated(true);
   };
 
-  // If not logged in, show ONLY the Auth component
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    window.location.reload(); // Hard refresh to reset the state
+  };
+
   if (!isAuthenticated) {
     return <Auth onLoginSuccess={handleLoginSuccess} />;
   }
 
   if (status === "loading" && boards.length === 0) {
-    return <div className="loading-screen">Loading...</div>; // [cite: 232]
+    return <div className="loading-screen">Loading...</div>;
   }
 
   return (
     <div className="app-container">
       <Sidebar />
-      <main className={`board-view ${selectedCard ? "dimmed" : ""}`}>
+      <UserMenu onLogout={handleLogout} />
+      <main
+        className={`board-view ${selectedCard ? "dimmed" : ""}`}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          height: "100vh",
+          overflow: "hidden",
+        }}
+      >
         <Board />
       </main>
       <Drawer key={selectedCard?.id || "empty"} />
@@ -879,7 +895,6 @@ FILE: ./frontend/src\components\Column.module.css
   color: var(--accent-cyan);
 }
 
-/* Fixed the typo from .colunTitle to .columnTitle */
 .columnTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -896,60 +911,45 @@ FILE: ./frontend/src\components\Column.module.css
   border-radius: 12px;
 }
 
+/* --- UPDATED CARDLIST & SCROLLBAR --- */
+
 .cardList {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 10px;
-  /* Fixed padding-right creates the 'permanent' gutter so cards never jump */
   padding-right: 12px;
-  overflow-y: overlay;
+  /* Changed 'overlay' to 'auto' for better browser support/consistency */
+  overflow-y: auto;
   min-height: 200px;
   max-height: calc(100vh - 200px);
   transition: background-color 0.2s ease;
 
-  /* Firefox: Slim and subtle */
+  /* Firefox Support: Styled to match the Dashboard */
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: stable both-edges; /* Always reserve space for the scrollbar */
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* Firefox: Reveal on hover */
-.cardList:hover {
-  scrollbar-color: var(--accent-magenta) transparent;
-}
-
-/* --- Chrome/Safari/Edge (Webkit) --- */
+/* Chrome/Safari/Edge (Webkit) */
 
 .cardList::-webkit-scrollbar {
-  width: 8px; /* Fixed width so space is always reserved */
-  display: block; /* Always 'exists' in the layout */
-  background: transparent;
+  width: 8px; /* Matches Home component exactly */
 }
 
 .cardList::-webkit-scrollbar-track {
-  /* This is the key: The track is ALWAYS invisible, matching the background */
-  background: rgba(0, 0, 0, 0) !important; /* Forces transparency */
-  border: none;
+  background: transparent;
 }
 
 .cardList::-webkit-scrollbar-thumb {
-  /* Start invisible */
-  background-color: transparent;
+  /* Using the subtle border color as the default state */
+  background-color: var(--border-subtle);
   border-radius: 20px;
-  /* Adds a little 'margin' inside the scrollbar area to look thinner */
+  /* Padding trick: makes the bar look thinner and floating */
   border: 2px solid transparent;
   background-clip: content-box;
-  box-shadow: none;
-  transition: background-color 0.3s;
 }
 
-/* When the user hovers over the COLUMN, the grab bar appears */
-.cardList:hover::-webkit-scrollbar-thumb {
-  background-color: var(--accent-magenta);
-}
-
-/* Optional: Make it even brighter when they actually grab the scrollbar */
+/* Neon Cyan reveals when you hover over the bar itself */
 .cardList::-webkit-scrollbar-thumb:hover {
   background-color: var(--accent-cyan);
 }
@@ -1378,10 +1378,12 @@ FILE: ./frontend/src\components\Home.jsx
 // frontend/src/components/Home.jsx
 import React, { useEffect, useState } from "react";
 import { getMyGlobalCards } from "../api/cards";
+import { useBoards } from "../context/BoardContext";
 import styles from "./Home.module.css";
 
 const Home = () => {
   const [globalCards, setGlobalCards] = useState([]);
+  const { boards, dispatch } = useBoards();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1398,45 +1400,186 @@ const Home = () => {
     fetchGlobalData();
   }, []);
 
+  // --- WIDGET LOGIC ---
+
+  // 1. Urgent Widget: Top 5 High Priority (Excluding completed cards)
+  const urgentTasks = globalCards
+    .filter((c) => {
+      const isHigh = c.priority?.toLowerCase() === "high";
+      const status = c.status?.toLowerCase() || "";
+      const isNotDone =
+        status !== "done" && status !== "deploy" && status !== "completed";
+      return isHigh && isNotDone;
+    })
+    .slice(0, 5);
+
+  // 2. Recent Widget: Last 5 items moved
+  const recentTasks = [...globalCards]
+    .sort((a, b) => new Date(b.last_moved_at) - new Date(a.last_moved_at))
+    .slice(0, 5);
+
+  // 3. Global Stats: Count all completed cards across all boards
+  const completedTasksCount = globalCards.filter((c) => {
+    const status = c.status?.toLowerCase() || "";
+    return status === "done" || status === "deploy" || status === "completed";
+  }).length;
+
+  // 4. Project Health: Progress bars per board
+  const boardHealth = boards.map((board) => {
+    const boardCards = globalCards.filter((c) => c.board_id === board.id);
+
+    const completed = boardCards.filter((c) => {
+      const status = c.status?.toLowerCase() || "";
+      return status === "done" || status === "deploy" || status === "completed";
+    }).length;
+
+    const progress =
+      boardCards.length > 0
+        ? Math.round((completed / boardCards.length) * 100)
+        : 0;
+
+    return { ...board, progress, total: boardCards.length };
+  });
+
+  // --- NEW WIDGET LOGIC ---
+
+  // 5. Shortcuts: Just the top 4 boards for quick access
+  const boardShortcuts = boards.slice(0, 4);
+
   if (loading)
-    return <div className={styles.loading}>Analyzing your workspace...</div>;
+    return (
+      <div className={styles.loading}>Initializing Mission Control...</div>
+    );
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>Welcome back, Aaron</h1>
-        <p>Here’s what’s happening across your projects.</p>
+        <div className={styles.headerInfo}>
+          <h1>
+            <span className={styles.pulse}></span>
+            Mission Control
+          </h1>
+          <p className={styles.dateDisplay}>
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        </div>
       </header>
 
+      {/* RE-STYLED STATS ROW */}
       <section className={styles.statsGrid}>
-        <div className={styles.statCard}>
-          <span className={styles.statLabel}>Total Tasks</span>
-          <span className={styles.statValue}>{globalCards.length}</span>
+        <div className={styles.statCard} data-type="total">
+          <div className={styles.statIcon}>Σ</div>
+          <div className={styles.statContent}>
+            <span className={styles.statValue}>{globalCards.length}</span>
+            <span className={styles.statLabel}>Total Tasks</span>
+          </div>
         </div>
-        <div className={styles.statCard}>
-          <span className={styles.statLabel}>Stale Tasks</span>
-          <span className={styles.statValue}>--</span>{" "}
-          {/* We'll calculate this tomorrow */}
+
+        <div className={styles.statCard} data-type="completed">
+          <div className={styles.statIcon}>✓</div>
+          <div className={styles.statContent}>
+            <span className={styles.statValue}>{completedTasksCount}</span>
+            <span className={styles.statLabel}>Completed</span>
+          </div>
         </div>
       </section>
 
-      <div className={styles.content}>
-        <div className={styles.feedSection}>
-          <h2>Global Feed</h2>
-          {globalCards.map((card) => (
-            <div key={card.id} className={styles.miniCard}>
-              <span
-                className={styles.priorityDot}
-                data-priority={card.priority}
-              ></span>
-              <div className={styles.cardInfo}>
-                <span className={styles.cardTitle}>{card.title}</span>
-                <span className={styles.cardMeta}>
-                  Board ID: {card.board_id} • {card.status}
-                </span>
+      {/* BENTO GRID */}
+      <div className={styles.bentoGrid}>
+        {/* WIDGET 1: URGENT */}
+        <div className={styles.widget}>
+          <h3>Urgent (High Priority)</h3>
+          <div className={styles.widgetContent}>
+            {urgentTasks.map((task) => (
+              <div
+                key={task.id}
+                className={styles.miniCard}
+                onClick={() =>
+                  dispatch({
+                    type: "setActiveBoard",
+                    payload: boards.find((b) => b.id === task.board_id),
+                  })
+                }
+              >
+                <span
+                  className={styles.priorityDot}
+                  data-priority="high"
+                ></span>
+                <p>{task.title}</p>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+
+        {/* WIDGET 2: RECENT ACTIVITY */}
+        <div className={styles.widget}>
+          <h3>Recent Activity</h3>
+          <div className={styles.widgetContent}>
+            {recentTasks.map((task) => {
+              const boardObj = boards?.find((b) => b.id === task.board_id);
+              return (
+                <div
+                  key={task.id}
+                  className={styles.miniCard}
+                  onClick={() =>
+                    boardObj &&
+                    dispatch({ type: "setActiveBoard", payload: boardObj })
+                  }
+                >
+                  <div className={styles.cardInfo}>
+                    <p className={styles.cardTitle}>{task.title}</p>
+                    <p className={styles.cardMeta}>
+                      Moved to{" "}
+                      <span className={styles.statusPill}>{task.status}</span>
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* WIDGET 3: PROJECT HEALTH */}
+        <div className={styles.widget}>
+          <h3>Project Health</h3>
+          <div className={styles.widgetContent}>
+            {boardHealth.map((project) => (
+              <div key={project.id} className={styles.healthRow}>
+                <div className={styles.healthInfo}>
+                  <span>{project.title}</span>
+                  <span>{project.progress}%</span>
+                </div>
+                <div className={styles.progressBar}>
+                  <div
+                    className={styles.progressFill}
+                    style={{ width: `${project.progress}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* WIDGET 4: BOARD SHORTCUTS (The Gap Filler) */}
+        <div className={styles.widget}>
+          <h3>Quick Links</h3>
+          <div className={styles.shortcutGrid}>
+            {boardShortcuts.map((board) => (
+              <button
+                key={board.id}
+                className={styles.shortcutBtn}
+                onClick={() =>
+                  dispatch({ type: "setActiveBoard", payload: board })
+                }
+              >
+                {board.title}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1449,17 +1592,264 @@ export default Home;
 FILE: ./frontend/src\components\Home.module.css
 ==================================================
 .container {
-  padding: 3rem;
-  max-width: 1000px;
-  margin: 0 auto;
-  color: var(--text-primary);
-  /* Fix: Allow the home container to scroll if content overflows */
-  height: 100vh;
+  padding: 2.5rem;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
-  /* Smooth scrolling for a premium feel */
-  scroll-behavior: smooth;
+  color: var(--text-primary);
 }
 
+/* --- HEADER & DATE --- */
+
+.header {
+  margin-bottom: 2.5rem;
+  position: relative;
+}
+
+.header h1 {
+  color: var(--accent-cyan);
+  font-size: 2.8rem;
+  margin-bottom: 0.2rem;
+  text-shadow: 0 0 15px rgba(0, 245, 255, 0.2);
+  letter-spacing: -1px;
+}
+
+.dateDisplay {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+/* MISSION CONTROL PULSE */
+.pulse {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  margin-right: 12px;
+  box-shadow: 0 0 10px var(--accent-cyan);
+  animation: pulseNeon 2s infinite;
+}
+
+@keyframes pulseNeon {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- STAT CARDS --- */
+
+.statsGrid {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.statCard {
+  background: linear-gradient(145deg, #1a1a1a, #121212);
+  padding: 1.5rem 2rem;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: 1;
+  transition:
+    transform 0.2s ease,
+    border-color 0.3s ease;
+}
+
+.statCard:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.statIcon {
+  font-size: 1.8rem;
+  opacity: 0.3;
+  color: var(--text-primary);
+}
+
+.statContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.statValue {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+/* COLOR LOGIC FOR STATS */
+.statCard[data-type="total"] .statValue {
+  color: #ff007f; /* Neon Magenta */
+  text-shadow: 0 0 20px rgba(255, 0, 127, 0.3);
+}
+
+.statCard[data-type="completed"] .statValue {
+  color: #39ff14; /* Neon Green */
+  text-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+}
+
+/* --- BENTO GRID --- */
+
+.bentoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 320px;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.widget {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.widget h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  margin-bottom: 1.25rem;
+  letter-spacing: 1.5px;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+  padding-bottom: 0.8rem;
+}
+
+.widgetContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+/* Custom internal scrollbar for widgets */
+.widgetContent::-webkit-scrollbar {
+  width: 4px;
+}
+.widgetContent::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 10px;
+}
+
+/* 4th Widget Styling (Quick Links) */
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.shortcutBtn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  padding: 1.2rem;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.shortcutBtn:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.05);
+  color: var(--accent-cyan);
+  transform: translateY(-2px);
+}
+
+/* --- CARDS & HEALTH BARS --- */
+
+.cardTitle {
+  font-weight: 500;
+  margin: 0;
+}
+
+.cardMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.statusPill {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.healthRow {
+  margin-bottom: 1.5rem;
+}
+
+.healthInfo {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+}
+
+.progressBar {
+  height: 8px;
+  background: #111;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.progressFill {
+  height: 100%;
+  background: #39ff14; /* Neon Green for completion */
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.miniCard {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.miniCard:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
+}
+
+/* MISSION CONTROL GLOBAL SCROLLBAR */
 .container::-webkit-scrollbar {
   width: 8px;
 }
@@ -1467,110 +1857,6 @@ FILE: ./frontend/src\components\Home.module.css
 .container::-webkit-scrollbar-thumb {
   background-color: var(--border-subtle);
   border-radius: 20px;
-}
-
-.container::-webkit-scrollbar-thumb:hover {
-  background-color: var(--accent-cyan);
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  margin-bottom: 0.5rem;
-  color: var(--accent-cyan); /* Neon Cyan [cite: 314] */
-  text-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
-}
-
-.statsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-  margin: 2rem 0;
-}
-
-.statCard {
-  background: var(--bg-secondary);
-  padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-}
-
-.statLabel {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.statValue {
-  font-size: 2rem;
-  font-weight: bold;
-  margin-top: 0.5rem;
-}
-
-.miniCard {
-  background: var(--bg-secondary);
-  margin-bottom: 0.75rem;
-  padding: 1.25rem;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  border: 1px solid var(--border-subtle);
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.miniCard:hover {
-  transform: translateX(5px);
-  border-color: #444;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.priorityDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.priorityDot[data-priority="high"] {
-  background-color: #ff007f;
-  box-shadow: 0 0 8px rgba(255, 0, 127, 0.6);
-}
-
-/* Medium Priority: Neon Green [cite: 405, 410] */
-.priorityDot[data-priority="medium"] {
-  background-color: #39ff14;
-  box-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
-}
-
-/* Low Priority: Cyan [cite: 406, 411] */
-.priorityDot[data-priority="low"] {
-  background-color: var(--accent-cyan);
-  box-shadow: 0 0 8px rgba(0, 245, 255, 0.6);
-}
-
-.cardInfo {
-  display: flex;
-  flex-direction: column;
-}
-
-.cardMeta {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.feedSection h2 {
-  font-size: 1.2rem;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text-secondary);
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 0.5rem;
 }
 
 ==================================================
@@ -1581,12 +1867,6 @@ import styles from "./Sidebar.module.css";
 
 function Sidebar() {
   const { boards, activeBoard, dispatch } = useBoards();
-
-  const handleLogout = () => {
-    localStorage.removeItem("token"); // Clear the key
-    dispatch({ type: "logout" }); // Reset the global state
-    window.location.reload(); // Hard refresh to clear everything
-  };
 
   return (
     <aside className={styles.sidebar}>
@@ -1612,13 +1892,6 @@ function Sidebar() {
             </button>
           ))}
         </nav>
-      </div>
-
-      {/* --- NEW LOGOUT SECTION --- */}
-      <div className={styles.bottomSection}>
-        <button className={styles.logoutBtn} onClick={handleLogout}>
-          Log Out
-        </button>
       </div>
     </aside>
   );
@@ -1713,6 +1986,155 @@ FILE: ./frontend/src\components\Sidebar.module.css
   background: #ff4d4d22; /* Faint red glow */
   color: #ff4d4d;
   border-color: #ff4d4d;
+}
+
+==================================================
+FILE: ./frontend/src\components\UserMenu.jsx
+==================================================
+import React, { useState, useRef, useEffect } from "react";
+import styles from "./UserMenu.module.css";
+
+const UserMenu = ({ onLogout }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close menu if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className={styles.userMenuContainer} ref={menuRef}>
+      <div className={styles.avatarCircle} onClick={() => setIsOpen(!isOpen)}>
+        <span>A</span>
+      </div>
+
+      {isOpen && (
+        <div className={styles.dropdown}>
+          <div className={styles.userInfo}>
+            <p className={styles.userName}>Aaron</p>
+            <p className={styles.userRole}>Lead Developer</p>
+          </div>
+          <div className={styles.divider}></div>
+          <button className={styles.logoutBtn} onClick={onLogout}>
+            Log Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default UserMenu;
+
+==================================================
+FILE: ./frontend/src\components\UserMenu.module.css
+==================================================
+.userMenuContainer {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000; /* Ensured it sits above the sidebar and drawers */
+}
+
+.avatarCircle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+}
+
+.avatarCircle:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.dropdown {
+  position: absolute;
+  top: 55px;
+  right: 0;
+  background: #111; /* Darker background for higher contrast */
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 200px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.userInfo {
+  padding: 8px 12px;
+}
+
+.userName {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.userRole {
+  margin: 2px 0 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(
+    255,
+    255,
+    255,
+    0.05
+  ); /* Subtle border matching our new style */
+  margin: 12px 0;
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: #ff4d4d; /* Danger Red */
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.logoutBtn:hover {
+  background: rgba(255, 77, 77, 0.1);
 }
 
 ==================================================

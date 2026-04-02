@@ -73,3 +73,33 @@ class BoardResponse(BoardBase):
 
     class Config:
         from_attributes = True
+
+        # --- COMMENT SCHEMAS ---
+class CommentBase(BaseModel):
+    content: str
+
+class CommentCreate(CommentBase):
+    card_id: int
+
+class CommentResponse(CommentBase):
+    id: int
+    created_at: datetime
+    user_id: int
+    card_id: int
+    # We'll include the author's name for the UI
+    author_name: Optional[str] = None 
+
+    class Config:
+        from_attributes = True
+
+# --- NOTIFICATION SCHEMAS ---
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    message: str
+    is_read: bool
+    created_at: datetime
+    card_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True

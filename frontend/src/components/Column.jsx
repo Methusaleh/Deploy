@@ -5,9 +5,13 @@ import styles from "./Column.module.css";
 function Column({ id, title, cards, dispatch }) {
   return (
     <div className={styles.column}>
-      {/* 1. HEADER AREA: Good place for the + button if you want it at the top */}
+      {/* 1. HEADER AREA: Title, Count, and Add Button */}
       <header className={styles.columnHeader}>
-        <h3 className={styles.columnTitle}>{title}</h3>
+        <div className={styles.titleWrapper}>
+          <h3 className={styles.columnTitle}>{title}</h3>
+          <span className={styles.count}>{cards.length}</span>
+        </div>
+
         <button
           className={styles.addBtn}
           onClick={() => dispatch({ type: "openCreateDrawer", payload: id })}

@@ -97,7 +97,6 @@ function Board() {
         <header className={styles.header}>
           <div className={styles.headerMain}>
             <h1>{activeBoard.title}</h1>
-            <span className={styles.totalCount}>{cards.length} Cards</span>
           </div>
         </header>
 

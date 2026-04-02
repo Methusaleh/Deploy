@@ -75,3 +75,29 @@ class Card(Base):
     
     board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    card_id = Column(Integer, ForeignKey("cards.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    
+    # Back-references
+    author = relationship("User")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String) # e.g., "mention", "status_change", "assignment"
+    message = Column(String, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Who receives the notification
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    # Link to the specific card so clicking the notification opens it
+    card_id = Column(Integer, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
