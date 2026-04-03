@@ -26,9 +26,13 @@ export const getBoardCards = async (boardId) => {
 };
 
 export const updateCard = async (cardId, cardData) => {
+  const token = localStorage.getItem("token");
   const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify(cardData),
   });
   if (!response.ok) throw new Error("Failed to update card");

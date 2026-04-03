@@ -95,6 +95,7 @@ class Notification(Base):
     type = Column(String) # e.g., "mention", "status_change", "assignment"
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Who receives the notification

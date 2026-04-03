@@ -1,3 +1,4 @@
+/* --- 1. MAIN CONTAINER & OVERLAY --- */
 .drawer {
   position: fixed;
   top: 0;
@@ -11,6 +12,10 @@
   /* Start off-screen */
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Flex settings to allow internal scrolling */
+  display: flex;
+  flex-direction: column;
 }
 
 .drawer.open {
@@ -35,16 +40,11 @@
   pointer-events: auto;
 }
 
-.title {
-  font-size: 1.5rem;
-  color: var(--text-primary);
-  margin-top: 1rem;
-}
-
-.description {
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-top: 1.5rem;
+/* --- 2. HEADER & LAYOUT WRAPPER --- */
+.header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
 }
 
 .closeBtn {
@@ -55,8 +55,26 @@
   cursor: pointer;
 }
 
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Fallback scrolling for the whole content area */
+  padding-right: 4px;
+}
+
+/* Custom scrollbar for the main content area */
+.content::-webkit-scrollbar {
+  width: 4px;
+}
+.content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* --- 3. FORM ELEMENTS --- */
 .editGroup {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .label {
@@ -65,8 +83,7 @@
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 1px;
-  margin-bottom: 0.8rem;
-  margin-top: 1rem;
+  margin-bottom: 0.6rem;
 }
 
 .statusBadge {
@@ -79,8 +96,6 @@
   font-weight: 700;
   text-transform: uppercase;
   margin-bottom: 1.5rem;
-
-  /* Fix: Prevents the text-edit cursor on non-editable fields */
   cursor: default;
   user-select: none;
 }
@@ -89,7 +104,6 @@
   width: 100%;
   background: transparent;
   border: 1px solid transparent;
-  border-bottom: 1px solid transparent;
   border-radius: 4px;
   font-size: 1.5rem;
   font-weight: 600;
@@ -97,7 +111,6 @@
   outline: none;
   padding: 4px 8px;
   margin-left: -8px;
-  cursor: text;
   transition: border-color 0.2s;
 }
 
@@ -106,14 +119,9 @@
   border-color: var(--accent-cyan);
 }
 
-.titleInput:hover {
-  background-color: rgba(255, 255, 255, 0.03);
-  border-color: var(--border-subtle);
-}
-
 .descInput {
   width: 100%;
-  height: 200px;
+  height: 120px; /* Reduced fixed height to make room for comments */
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
@@ -125,12 +133,36 @@
   outline: none;
 }
 
-.descInput:focus {
-  border-color: #444;
+.prioritySelect {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #222;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.prioritySelect option[value="high"] {
+  color: #ff007f;
+}
+.prioritySelect option[value="medium"] {
+  color: #39ff14;
+}
+.prioritySelect option[value="low"] {
+  color: var(--accent-cyan);
+}
+
+/* --- 4. ACTION BUTTONS --- */
+.actionRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 1rem;
 }
 
 .saveBtn {
-  margin-top: 1rem;
+  flex: 2;
   padding: 0.8rem;
   background-color: var(--accent-cyan);
   color: #121212;
@@ -141,29 +173,14 @@
   transition: all 0.3s ease;
 }
 
-.saveBtn:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-.saveBtn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-/* The Success State */
 .saveBtn.saved {
-  background-color: #39ff14 !important; /* Forces the neon green */
-  color: #000000 !important;
-  border-color: #39ff14 !important;
-  opacity: 1 !important; /* Prevents the 'disabled' look from dimming the green */
-  cursor: default;
-  font-weight: 700;
-  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); /* Adds that 'neon' glow */
+  background-color: #39ff14 !important;
+  color: #000 !important;
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
 }
 
 .deleteBtn {
-  margin-top: 2rem; /* Give it some space from the save button */
+  flex: 1;
   background: transparent;
   border: 1px solid #444;
   color: #888;
@@ -171,8 +188,7 @@
   font-size: 0.8rem;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 100%;
+  transition: all 0.4s ease;
 }
 
 .deleteBtn:hover {
@@ -180,12 +196,9 @@
   color: #ff4444;
 }
 
-/* The "Are you sure?" state */
 .confirmDelete {
   background-color: #ff4444 !important;
   color: white !important;
-  border-color: #ff4444 !important;
-  font-weight: bold;
   animation: pulseRed 1.5s infinite;
 }
 
@@ -201,30 +214,152 @@
   }
 }
 
-.prioritySelect {
-  width: 100%;
-  padding: 0.6rem;
-  background-color: #222;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: 4px;
-  cursor: pointer;
-  outline: none;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
+/* --- 5. ACTIVITY / COMMENT SECTION --- */
+.commentSection {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for flex child scrolling */
 }
 
-.prioritySelect:focus {
+.activityTitle {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  letter-spacing: 1px;
+}
+
+.commentList {
+  max-height: 350px;
+  overflow-y: auto;
+  margin-bottom: 1.5rem;
+  padding-right: 8px;
+  scroll-behavior: smooth;
+}
+
+/* Styling the activity scrollbar cyan */
+.commentList::-webkit-scrollbar {
+  width: 5px;
+}
+.commentList::-webkit-scrollbar-thumb {
+  background: var(--accent-cyan);
+  border-radius: 10px;
+}
+
+.commentItem {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.commentHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.commentAuthor {
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--accent-cyan);
+}
+
+.commentTime {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.commentContent {
+  font-size: 0.9rem;
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.commentForm {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.commentForm input {
+  flex: 1;
+  padding: 12px;
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  color: white;
+  border-radius: 6px;
+  outline: none;
+}
+
+.commentForm input:focus {
   border-color: var(--accent-cyan);
 }
 
-/* Optional: Color the text inside the dropdown */
-.prioritySelect option[value="high"] {
-  color: #ff007f;
+.commentForm button {
+  background: var(--border-subtle);
+  color: white;
+  border: none;
+  padding: 0 15px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
 }
-.prioritySelect option[value="medium"] {
-  color: #39ff14;
+
+.commentForm button:not(:disabled) {
+  background: var(--accent-cyan);
+  color: #000;
 }
-.prioritySelect option[value="low"] {
+
+.commentFormWrapper {
+  position: relative; /* Anchor for the absolute-positioned dropdown */
+}
+
+.suggestionList {
+  position: absolute;
+  bottom: 100%; /* Float above the input */
+  left: 0;
+  width: 100%;
+  background: #222;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: 8px;
+  box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.4);
+}
+
+.suggestionItem {
+  padding: 10px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid #333;
+  transition: background 0.2s;
+}
+
+.suggestionItem:hover,
+.activeSuggestion {
+  background: #333;
+}
+
+.suggestName {
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.suggestHandle {
+  font-size: 0.75rem;
   color: var(--accent-cyan);
+  background: rgba(0, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }

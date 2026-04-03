@@ -219,9 +219,13 @@ export const getBoardCards = async (boardId) => {
 };
 
 export const updateCard = async (cardId, cardData) => {
+  const token = localStorage.getItem("token");
   const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify(cardData),
   });
   if (!response.ok) throw new Error("Failed to update card");
@@ -568,7 +572,6 @@ function Board() {
         <header className={styles.header}>
           <div className={styles.headerMain}>
             <h1>{activeBoard.title}</h1>
-            <span className={styles.totalCount}>{cards.length} Cards</span>
           </div>
         </header>
 
@@ -814,9 +817,13 @@ import styles from "./Column.module.css";
 function Column({ id, title, cards, dispatch }) {
   return (
     <div className={styles.column}>
-      {/* 1. HEADER AREA: Good place for the + button if you want it at the top */}
+      {/* 1. HEADER AREA: Title, Count, and Add Button */}
       <header className={styles.columnHeader}>
-        <h3 className={styles.columnTitle}>{title}</h3>
+        <div className={styles.titleWrapper}>
+          <h3 className={styles.columnTitle}>{title}</h3>
+          <span className={styles.count}>{cards.length}</span>
+        </div>
+
         <button
           className={styles.addBtn}
           onClick={() => dispatch({ type: "openCreateDrawer", payload: id })}
@@ -895,6 +902,12 @@ FILE: ./frontend/src\components\Column.module.css
   color: var(--accent-cyan);
 }
 
+.titleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .columnTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -904,11 +917,13 @@ FILE: ./frontend/src\components\Column.module.css
 }
 
 .count {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--text-secondary);
-  background-color: #222;
+  background-color: rgba(255, 255, 255, 0.05);
   padding: 2px 8px;
   border-radius: 12px;
+  border: 1px solid var(--border-subtle);
 }
 
 /* --- UPDATED CARDLIST & SCROLLBAR --- */
@@ -963,52 +978,166 @@ FILE: ./frontend/src\components\Column.module.css
 ==================================================
 FILE: ./frontend/src\components\Drawer.jsx
 ==================================================
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useBoards } from "../context/BoardContext";
 import { updateCard, createCard, deleteCard } from "../api/boards";
 import styles from "./Drawer.module.css";
 
 function Drawer() {
   const { selectedCard, cards, dispatch, activeBoard } = useBoards();
+  const isOpen = !!selectedCard;
 
-  // Local state to hold the edits before saving
-  const [title, setTitle] = useState(selectedCard?.title || "");
-  const [description, setDescription] = useState(
-    selectedCard?.description || "",
+  return (
+    <>
+      <div
+        className={`${styles.overlay} ${isOpen ? styles.show : ""}`}
+        onClick={() => dispatch({ type: "closeDrawer" })}
+      />
+      <aside className={`${styles.drawer} ${isOpen ? styles.open : ""}`}>
+        <div className={styles.header}>
+          <button
+            className={styles.closeBtn}
+            onClick={() => dispatch({ type: "closeDrawer" })}
+          >
+            &times;
+          </button>
+        </div>
+
+        {selectedCard && (
+          <DrawerContent
+            key={selectedCard.id}
+            selectedCard={selectedCard}
+            cards={cards}
+            dispatch={dispatch}
+            activeBoard={activeBoard}
+          />
+        )}
+      </aside>
+    </>
   );
-  const [priority, setPriority] = useState(selectedCard?.priority || "low");
-  const [saveStatus, setSaveStatus] = useState("idle");
+}
 
+function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
+  const [title, setTitle] = useState(selectedCard.title || "");
+  const [description, setDescription] = useState(
+    selectedCard.description || "",
+  );
+  const [priority, setPriority] = useState(selectedCard.priority || "low");
+  const [saveStatus, setSaveStatus] = useState("idle");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Synchronize local state when the selectedCard changes
-  // useEffect(() => {
-  //   if (selectedCard) {
-  //     setTitle(selectedCard.title);
-  //     setDescription(selectedCard.description || "");
-  //   }
-  // }, [selectedCard]);
+  // --- Comment & Autocomplete State ---
+  const [commentText, setCommentText] = useState("");
+  const [comments, setComments] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const isNew = selectedCard?.id === "new";
 
+  useEffect(() => {
+    if (isNew) return;
+
+    const fetchComments = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `http://localhost:8000/cards/${selectedCard.id}/comments`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setComments(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch comments:", err);
+      }
+    };
+
+    fetchComments();
+  }, [selectedCard.id, isNew]);
+
+  // --- Handlers ---
+  const handleInputChange = async (e) => {
+    const value = e.target.value;
+    setCommentText(value);
+
+    // Detect if user is typing a mention
+    const words = value.split(/\s/);
+    const lastWord = words[words.length - 1];
+
+    if (lastWord.startsWith("@") && lastWord.length > 1) {
+      const query = lastWord.slice(1);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `http://localhost:8000/users/search?q=${query}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(data);
+          setShowSuggestions(data.length > 0);
+        }
+      } catch (err) {
+        console.error("User search failed:", err);
+      }
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const applyMention = (userHandle) => {
+    const words = commentText.split(" ");
+    words.pop(); // Remove partial handle
+    setCommentText([...words, userHandle, ""].join(" "));
+    setShowSuggestions(false);
+  };
+
+  const handlePostComment = async (e) => {
+    e.preventDefault();
+    if (!commentText.trim()) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `http://localhost:8000/cards/${selectedCard.id}/comments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            content: commentText,
+            card_id: selectedCard.id,
+          }),
+        },
+      );
+
+      if (res.ok) {
+        const newComment = await res.json();
+        setComments((prev) => [...prev, newComment]);
+        setCommentText("");
+      }
+    } catch (err) {
+      console.error("Failed to post comment:", err);
+    }
+  };
+
   const handleDelete = async () => {
     if (!isDeleting) {
-      setIsDeleting(true); // First click: show confirmation
+      setIsDeleting(true);
       return;
     }
-
-    // Second click: perform the delete
     try {
       await deleteCard(selectedCard.id);
-
-      // Remove the card from the local list immediately
       const remainingCards = cards.filter((c) => c.id !== selectedCard.id);
       dispatch({ type: "setCards", payload: remainingCards });
-
       dispatch({ type: "closeDrawer" });
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Could not delete card.");
       setIsDeleting(false);
     }
   };
@@ -1022,10 +1151,9 @@ function Drawer() {
           title,
           description,
           priority,
-          status: selectedCard.status, // The column we clicked '+' in
-          board_id: activeBoard.id, // From your context
+          status: selectedCard.status,
+          board_id: activeBoard.id,
         });
-        // Add the new card to the global list
         dispatch({ type: "setCards", payload: [...cards, result] });
       } else {
         result = await updateCard(selectedCard.id, {
@@ -1038,9 +1166,7 @@ function Drawer() {
         );
         dispatch({ type: "setCards", payload: updatedCards });
       }
-
       setSaveStatus("saved");
-
       setTimeout(() => {
         dispatch({ type: "closeDrawer" });
         setSaveStatus("idle");
@@ -1051,88 +1177,127 @@ function Drawer() {
     }
   };
 
-  // D. Guard Clauses
-  const isOpen = !!selectedCard;
-
   return (
-    <>
-      <div
-        className={`${styles.overlay} ${isOpen ? styles.show : ""}`}
-        onClick={() => dispatch({ type: "closeDrawer" })}
-      />
+    <div className={styles.content}>
+      <span className={styles.statusBadge}>{selectedCard.status}</span>
 
-      <aside className={`${styles.drawer} ${isOpen ? styles.open : ""}`}>
-        <div className={styles.header}>
+      <div className={styles.editGroup}>
+        <label className={styles.label}>Priority</label>
+        <select
+          className={styles.prioritySelect}
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+
+      <div className={styles.editGroup}>
+        <label className={styles.label}>Title</label>
+        <input
+          className={styles.titleInput}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Task title..."
+          autoFocus={isNew}
+        />
+      </div>
+
+      <div className={styles.editGroup}>
+        <label className={styles.label}>Description</label>
+        <textarea
+          className={styles.descInput}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Add a more detailed description..."
+        />
+      </div>
+
+      <div className={styles.actionRow}>
+        <button
+          className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
+          onClick={handleSave}
+          disabled={saveStatus !== "idle"}
+        >
+          {saveStatus === "saving"
+            ? "Saving..."
+            : saveStatus === "saved"
+              ? "✓ Saved"
+              : "Save Changes"}
+        </button>
+
+        {!isNew && (
           <button
-            className={styles.closeBtn}
-            onClick={() => dispatch({ type: "closeDrawer" })}
+            className={`${styles.deleteBtn} ${isDeleting ? styles.confirmDelete : ""}`}
+            onClick={handleDelete}
+            onMouseLeave={() => setIsDeleting(false)}
           >
-            &times;
+            {isDeleting ? "Confirm?" : "Delete"}
           </button>
-        </div>
+        )}
+      </div>
 
-        {selectedCard && (
-          <div className={styles.content}>
-            <span className={styles.statusBadge}>{selectedCard.status}</span>
-
-            <div className={styles.editGroup}>
-              <label className={styles.label}>Priority</label>
-              <select
-                className={styles.prioritySelect}
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-
-            <div className={styles.editGroup}>
-              <label className={styles.label}>Title</label>
-              <input
-                className={styles.titleInput}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Task title..."
-                autoFocus={isNew}
-              />
-            </div>
-
-            <div className={styles.editGroup}>
-              <label className={styles.label}>Description</label>
-              <textarea
-                className={styles.descInput}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add a more detailed description..."
-              />
-            </div>
-
-            <button
-              className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
-              onClick={handleSave}
-              disabled={saveStatus !== "idle"}
-            >
-              {saveStatus === "saving"
-                ? "Saving..."
-                : saveStatus === "saved"
-                  ? "✓ Saved"
-                  : "Save Changes"}
-            </button>
-            {!isNew && (
-              <button
-                className={`${styles.deleteBtn} ${isDeleting ? styles.confirmDelete : ""}`}
-                onClick={handleDelete}
-                onMouseLeave={() => setIsDeleting(false)} // Reset if user moves mouse away
-              >
-                {isDeleting ? "Confirm Delete?" : "Delete Task"}
-              </button>
+      {!isNew && (
+        <div className={styles.commentSection}>
+          <h4 className={styles.activityTitle}>Activity</h4>
+          <div className={styles.commentList}>
+            {comments.length > 0 ? (
+              comments.map((c) => (
+                <div key={c.id} className={styles.commentItem}>
+                  <div className={styles.commentHeader}>
+                    <span className={styles.commentAuthor}>
+                      {c.author_name}
+                    </span>
+                    <span className={styles.commentTime}>
+                      {new Date(c.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <p className={styles.commentContent}>{c.content}</p>
+                </div>
+              ))
+            ) : (
+              <p className={styles.emptyComments}>No comments yet.</p>
             )}
           </div>
-        )}
-      </aside>
-    </>
+
+          <div className={styles.commentFormWrapper}>
+            {showSuggestions && (
+              <div className={styles.suggestionList}>
+                {suggestions.map((user) => (
+                  <div
+                    key={user.id}
+                    className={styles.suggestionItem}
+                    onClick={() => applyMention(user.handle)}
+                  >
+                    <span className={styles.suggestName}>
+                      {user.first_name} {user.last_name}
+                    </span>
+                    <span className={styles.suggestHandle}>{user.handle}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form onSubmit={handlePostComment} className={styles.commentForm}>
+              <input
+                type="text"
+                placeholder="Write a comment... use @ to mention"
+                value={commentText}
+                onChange={handleInputChange}
+                autoComplete="off"
+              />
+              <button type="submit" disabled={!commentText.trim()}>
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1141,6 +1306,7 @@ export default Drawer;
 ==================================================
 FILE: ./frontend/src\components\Drawer.module.css
 ==================================================
+/* --- 1. MAIN CONTAINER & OVERLAY --- */
 .drawer {
   position: fixed;
   top: 0;
@@ -1154,6 +1320,10 @@ FILE: ./frontend/src\components\Drawer.module.css
   /* Start off-screen */
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Flex settings to allow internal scrolling */
+  display: flex;
+  flex-direction: column;
 }
 
 .drawer.open {
@@ -1178,16 +1348,11 @@ FILE: ./frontend/src\components\Drawer.module.css
   pointer-events: auto;
 }
 
-.title {
-  font-size: 1.5rem;
-  color: var(--text-primary);
-  margin-top: 1rem;
-}
-
-.description {
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-top: 1.5rem;
+/* --- 2. HEADER & LAYOUT WRAPPER --- */
+.header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
 }
 
 .closeBtn {
@@ -1198,8 +1363,26 @@ FILE: ./frontend/src\components\Drawer.module.css
   cursor: pointer;
 }
 
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Fallback scrolling for the whole content area */
+  padding-right: 4px;
+}
+
+/* Custom scrollbar for the main content area */
+.content::-webkit-scrollbar {
+  width: 4px;
+}
+.content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* --- 3. FORM ELEMENTS --- */
 .editGroup {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .label {
@@ -1208,8 +1391,7 @@ FILE: ./frontend/src\components\Drawer.module.css
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 1px;
-  margin-bottom: 0.8rem;
-  margin-top: 1rem;
+  margin-bottom: 0.6rem;
 }
 
 .statusBadge {
@@ -1222,8 +1404,6 @@ FILE: ./frontend/src\components\Drawer.module.css
   font-weight: 700;
   text-transform: uppercase;
   margin-bottom: 1.5rem;
-
-  /* Fix: Prevents the text-edit cursor on non-editable fields */
   cursor: default;
   user-select: none;
 }
@@ -1232,7 +1412,6 @@ FILE: ./frontend/src\components\Drawer.module.css
   width: 100%;
   background: transparent;
   border: 1px solid transparent;
-  border-bottom: 1px solid transparent;
   border-radius: 4px;
   font-size: 1.5rem;
   font-weight: 600;
@@ -1240,7 +1419,6 @@ FILE: ./frontend/src\components\Drawer.module.css
   outline: none;
   padding: 4px 8px;
   margin-left: -8px;
-  cursor: text;
   transition: border-color 0.2s;
 }
 
@@ -1249,14 +1427,9 @@ FILE: ./frontend/src\components\Drawer.module.css
   border-color: var(--accent-cyan);
 }
 
-.titleInput:hover {
-  background-color: rgba(255, 255, 255, 0.03);
-  border-color: var(--border-subtle);
-}
-
 .descInput {
   width: 100%;
-  height: 200px;
+  height: 120px; /* Reduced fixed height to make room for comments */
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
@@ -1268,12 +1441,36 @@ FILE: ./frontend/src\components\Drawer.module.css
   outline: none;
 }
 
-.descInput:focus {
-  border-color: #444;
+.prioritySelect {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #222;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.prioritySelect option[value="high"] {
+  color: #ff007f;
+}
+.prioritySelect option[value="medium"] {
+  color: #39ff14;
+}
+.prioritySelect option[value="low"] {
+  color: var(--accent-cyan);
+}
+
+/* --- 4. ACTION BUTTONS --- */
+.actionRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 1rem;
 }
 
 .saveBtn {
-  margin-top: 1rem;
+  flex: 2;
   padding: 0.8rem;
   background-color: var(--accent-cyan);
   color: #121212;
@@ -1284,29 +1481,14 @@ FILE: ./frontend/src\components\Drawer.module.css
   transition: all 0.3s ease;
 }
 
-.saveBtn:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-.saveBtn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-/* The Success State */
 .saveBtn.saved {
-  background-color: #39ff14 !important; /* Forces the neon green */
-  color: #000000 !important;
-  border-color: #39ff14 !important;
-  opacity: 1 !important; /* Prevents the 'disabled' look from dimming the green */
-  cursor: default;
-  font-weight: 700;
-  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); /* Adds that 'neon' glow */
+  background-color: #39ff14 !important;
+  color: #000 !important;
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
 }
 
 .deleteBtn {
-  margin-top: 2rem; /* Give it some space from the save button */
+  flex: 1;
   background: transparent;
   border: 1px solid #444;
   color: #888;
@@ -1314,8 +1496,7 @@ FILE: ./frontend/src\components\Drawer.module.css
   font-size: 0.8rem;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 100%;
+  transition: all 0.4s ease;
 }
 
 .deleteBtn:hover {
@@ -1323,12 +1504,9 @@ FILE: ./frontend/src\components\Drawer.module.css
   color: #ff4444;
 }
 
-/* The "Are you sure?" state */
 .confirmDelete {
   background-color: #ff4444 !important;
   color: white !important;
-  border-color: #ff4444 !important;
-  font-weight: bold;
   animation: pulseRed 1.5s infinite;
 }
 
@@ -1344,32 +1522,154 @@ FILE: ./frontend/src\components\Drawer.module.css
   }
 }
 
-.prioritySelect {
-  width: 100%;
-  padding: 0.6rem;
-  background-color: #222;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: 4px;
-  cursor: pointer;
-  outline: none;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
+/* --- 5. ACTIVITY / COMMENT SECTION --- */
+.commentSection {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for flex child scrolling */
 }
 
-.prioritySelect:focus {
+.activityTitle {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  letter-spacing: 1px;
+}
+
+.commentList {
+  max-height: 350px;
+  overflow-y: auto;
+  margin-bottom: 1.5rem;
+  padding-right: 8px;
+  scroll-behavior: smooth;
+}
+
+/* Styling the activity scrollbar cyan */
+.commentList::-webkit-scrollbar {
+  width: 5px;
+}
+.commentList::-webkit-scrollbar-thumb {
+  background: var(--accent-cyan);
+  border-radius: 10px;
+}
+
+.commentItem {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.commentHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.commentAuthor {
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--accent-cyan);
+}
+
+.commentTime {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.commentContent {
+  font-size: 0.9rem;
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.commentForm {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.commentForm input {
+  flex: 1;
+  padding: 12px;
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  color: white;
+  border-radius: 6px;
+  outline: none;
+}
+
+.commentForm input:focus {
   border-color: var(--accent-cyan);
 }
 
-/* Optional: Color the text inside the dropdown */
-.prioritySelect option[value="high"] {
-  color: #ff007f;
+.commentForm button {
+  background: var(--border-subtle);
+  color: white;
+  border: none;
+  padding: 0 15px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
 }
-.prioritySelect option[value="medium"] {
-  color: #39ff14;
+
+.commentForm button:not(:disabled) {
+  background: var(--accent-cyan);
+  color: #000;
 }
-.prioritySelect option[value="low"] {
+
+.commentFormWrapper {
+  position: relative; /* Anchor for the absolute-positioned dropdown */
+}
+
+.suggestionList {
+  position: absolute;
+  bottom: 100%; /* Float above the input */
+  left: 0;
+  width: 100%;
+  background: #222;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: 8px;
+  box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.4);
+}
+
+.suggestionItem {
+  padding: 10px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid #333;
+  transition: background 0.2s;
+}
+
+.suggestionItem:hover,
+.activeSuggestion {
+  background: #333;
+}
+
+.suggestName {
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.suggestHandle {
+  font-size: 0.75rem;
   color: var(--accent-cyan);
+  background: rgba(0, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 ==================================================
@@ -1991,34 +2291,183 @@ FILE: ./frontend/src\components\Sidebar.module.css
 ==================================================
 FILE: ./frontend/src\components\UserMenu.jsx
 ==================================================
+// frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
+import socket from "../api/socket";
 import styles from "./UserMenu.module.css";
 
 const UserMenu = ({ onLogout }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [userData, setUserData] = useState(null);
   const menuRef = useRef(null);
 
-  // Close menu if clicking outside
+  // 1. INITIALIZATION: Fetch User Profile and Notifications
+  useEffect(() => {
+    const initUserMenu = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const headers = { Authorization: `Bearer ${token}` };
+
+        // Fetch User Profile
+        const userRes = await fetch("http://localhost:8000/users/me", {
+          headers,
+        });
+        if (userRes.ok) {
+          const user = await userRes.json();
+          setUserData(user);
+
+          // CRITICAL: Join the private notification room
+          socket.emit("join_user_room", user.id);
+          console.log(`Joined private room: user_${user.id}`);
+        }
+
+        // Fetch Initial Notifications
+        const notifRes = await fetch("http://localhost:8000/notifications", {
+          headers,
+        });
+        if (notifRes.ok) {
+          const notifs = await notifRes.json();
+          setNotifications(notifs);
+        }
+      } catch (err) {
+        console.error("UserMenu Init Error:", err);
+      }
+    };
+
+    initUserMenu();
+  }, []);
+
+  // 2. LIVE SOCKET LISTENER
+  useEffect(() => {
+    socket.on("new_notification", (newNotif) => {
+      console.log("🔔 Inbox Update:", newNotif);
+      setNotifications((prev) => [newNotif, ...prev]);
+    });
+
+    return () => {
+      socket.off("new_notification");
+    };
+  }, []);
+
+  // 3. MARK AS READ LOGIC
+  const markAllAsRead = async () => {
+    const unreadExist = notifications.some((n) => !n.is_read);
+    if (!unreadExist) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:8000/notifications/read", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        // Update local state so badge disappears immediately
+        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      }
+    } catch (err) {
+      console.error("Failed to mark notifications as read:", err);
+    }
+  };
+
+  // 4. TOGGLE HANDLERS
+  const toggleInbox = () => {
+    const nextState = !isInboxOpen;
+    setIsInboxOpen(nextState);
+    setIsAccountOpen(false);
+
+    // If we are opening the inbox, trigger the read logic
+    if (nextState === true) {
+      markAllAsRead();
+    }
+  };
+
+  // 5. UI HELPERS (Click Outside)
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false);
+        setIsAccountOpen(false);
+        setIsInboxOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
   return (
     <div className={styles.userMenuContainer} ref={menuRef}>
-      <div className={styles.avatarCircle} onClick={() => setIsOpen(!isOpen)}>
-        <span>A</span>
+      {/* INBOX SECTION */}
+      <div className={styles.inboxWrapper}>
+        <div className={styles.bellIcon} onClick={toggleInbox}>
+          <span className="material-icons">notifications</span>
+          {unreadCount > 0 && (
+            <span className={styles.notificationBadge}>{unreadCount}</span>
+          )}
+        </div>
+
+        {isInboxOpen && (
+          <div className={styles.inboxDropdown}>
+            <div className={styles.inboxHeader}>
+              <h3>Inbox</h3>
+              <button
+                className={styles.clearBtn}
+                onClick={() => setNotifications([])}
+              >
+                Clear All
+              </button>
+            </div>
+            <div className={styles.inboxList}>
+              {notifications.length > 0 ? (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={styles.notificationItem}
+                    data-unread={!n.is_read}
+                  >
+                    <p>{n.message}</p>
+                    <span className={styles.timeAgo}>
+                      {n.created_at
+                        ? new Date(n.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Just now"}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className={styles.emptyInbox}>
+                  <p>All caught up!</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {isOpen && (
+      {/* ACCOUNT SECTION */}
+      <div
+        className={styles.avatarCircle}
+        onClick={() => {
+          setIsAccountOpen(!isAccountOpen);
+          setIsInboxOpen(false);
+        }}
+      >
+        <span>{userData ? userData.first_name[0] : "A"}</span>
+      </div>
+
+      {isAccountOpen && (
         <div className={styles.dropdown}>
           <div className={styles.userInfo}>
-            <p className={styles.userName}>Aaron</p>
+            <p className={styles.userName}>
+              {userData
+                ? `${userData.first_name} ${userData.last_name}`
+                : "Aaron"}
+            </p>
             <p className={styles.userRole}>Lead Developer</p>
           </div>
           <div className={styles.divider}></div>
@@ -2040,7 +2489,10 @@ FILE: ./frontend/src\components\UserMenu.module.css
   position: fixed;
   top: 20px;
   right: 30px;
-  z-index: 2000; /* Ensured it sits above the sidebar and drawers */
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 20px; /* Space between Bell and Avatar */
 }
 
 .avatarCircle {
@@ -2106,6 +2558,120 @@ FILE: ./frontend/src\components\UserMenu.module.css
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+
+.inboxWrapper {
+  position: relative;
+}
+
+.bellIcon {
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  position: relative;
+}
+
+.bellIcon:hover {
+  color: var(--accent-cyan);
+}
+
+.notificationBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ff007f; /* Magenta */
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 10px;
+  border: 2px solid #111;
+  box-shadow: 0 0 10px rgba(255, 0, 127, 0.5);
+}
+
+/* INBOX DROPDOWN */
+.inboxDropdown {
+  position: absolute;
+  top: 55px;
+  right: -60px; /* Offset to center under bell */
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 320px;
+  max-height: 450px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  animation: slideIn 0.2s ease-out;
+}
+
+.inboxHeader {
+  padding: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inboxHeader h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.clearBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.inboxList {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.notificationItem {
+  padding: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.notificationItem:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.notificationItem[data-unread="true"] {
+  border-left: 3px solid var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.02);
+}
+
+.notificationItem p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.timeAgo {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.emptyInbox {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .divider {
@@ -2448,6 +3014,7 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 from typing import List
 from datetime import datetime, timezone
+import re
 
 # Local App Imports
 from .database import engine, get_db
@@ -2540,6 +3107,11 @@ async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
+@sio.event
+async def join_user_room(sid, user_id):
+    await sio.enter_room(sid, f"user_{user_id}")
+    print(f"Client {sid} joined private room user_{user_id}")
+
 
 # 6. Routes
 @app.get("/")
@@ -2559,6 +3131,14 @@ async def test_user_connection(handle: str, db: AsyncSession = Depends(get_db)):
             "email": user.email
         }
     }
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    """
+    Returns the currently authenticated user's profile.
+    Used by the frontend to initialize the UserMenu and Socket rooms.
+    """
+    return current_user
 
 @app.post("/token", response_model=schemas.Token)
 async def login_for_access_token(
@@ -2690,6 +3270,41 @@ async def read_my_global_cards(
     cards = await crud.get_all_user_cards(db, current_user.id)
     return cards
 
+@app.get("/notifications", response_model=List[schemas.NotificationResponse])
+async def get_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(models.Notification)
+        .filter(models.Notification.user_id == current_user.id)
+        .order_by(models.Notification.created_at.desc())
+        .limit(20)
+    )
+    return result.scalars().all()
+
+@app.post("/notifications/read")
+async def mark_notifications_as_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Marks all unread notifications for the current user as read.
+    """
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.user_id == current_user.id)
+        .where(models.Notification.is_read == False)
+        .values(is_read=True)
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notifications marked as read"}
+
 @app.patch("/cards/{card_id}/status/")
 async def update_card_status(card_id: int, new_status: str, db: AsyncSession = Depends(get_db)):
     updated_card = await crud.update_card_status(db, card_id, new_status)
@@ -2732,7 +3347,12 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/cards/{card_id}", response_model=schemas.CardResponse)
-async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSession = Depends(get_db)):
+async def update_card(
+    card_id: int, 
+    card_update: schemas.CardUpdate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user) # Needed to know who to notify
+):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
     
@@ -2742,24 +3362,42 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
     # 1. Extract the update data
     update_data = card_update.model_dump(exclude_unset=True)
 
-    # 2. NEW: Force lowercase on status and priority immediately
+    # 2. Force lowercase on status and priority immediately
     if "status" in update_data and update_data["status"]:
         update_data["status"] = update_data["status"].lower()
 
     if "priority" in update_data and update_data["priority"]:
         update_data["priority"] = update_data["priority"].lower()
         
-    # 3. EXISTING LOGIC: If status is changing, update the 'Last Moved' timestamp
-    # Note: Now comparing lowercase 'deploy' or 'done'
+    # 3. STATUS CHANGE LOGIC: Timestamps + Notifications
     if "status" in update_data and update_data["status"] != card.status:
+        old_status = card.status
+        new_status = update_data["status"]
         card.last_moved_at = datetime.now(timezone.utc)
         
-        # Updated to check for both 'done' and 'deploy' as "completed" states
-        current_status = update_data["status"]
-        if current_status == "done" or current_status == "deploy":
+        # Update completion dates
+        if new_status in ["done", "deploy"]:
             card.completed_at = datetime.now(timezone.utc)
         else:
             card.completed_at = None
+
+        # JIRA LOGIC: Create an automated notification for the Inbox
+        new_notification = models.Notification(
+            type="status_change",
+            message=f"Task '{card.title}' moved from {old_status.upper()} to {new_status.upper()}",
+            user_id=current_user.id, 
+            card_id=card.id
+        )
+        db.add(new_notification)
+
+        await db.flush()
+
+        await sio.emit("new_notification", {
+            "id": new_notification.id,
+            "message": new_notification.message,
+            "card_id": new_notification.card_id,
+            "type": new_notification.type
+        }, room=f"user_{current_user.id}")    
 
     # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
@@ -2769,7 +3407,7 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         await db.commit()
         await db.refresh(card)
 
-        # Broadcast the update to the board room
+        # Broadcast the update to the board room via Socket.io
         await sio.emit("card_updated", {
             "id": card.id,
             "title": card.title,
@@ -2786,11 +3424,98 @@ async def update_card(card_id: int, card_update: schemas.CardUpdate, db: AsyncSe
         await db.rollback()
         print(f"Database Error: {e}")
         raise HTTPException(status_code=500, detail="Database update failed")
+    
+# --- COMMENT ROUTES ---
 
-    except Exception as e:
-        await db.rollback()
-        print(f"Database Error: {e}")
-        raise HTTPException(status_code=500, detail="Database update failed")
+@app.post("/cards/{card_id}/comments", response_model=schemas.CommentResponse)
+async def create_comment(
+    card_id: int,
+    comment_in: schemas.CommentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Save the comment 
+    new_comment = models.Comment(
+        content=comment_in.content,
+        card_id=card_id,
+        user_id=current_user.id
+    )
+    db.add(new_comment)
+    await db.flush() 
+
+    # 2. MENTION LOGIC: Find handles like @aaron_kipf [cite: 1222]
+    mentions = re.findall(r"@(\w+)", comment_in.content)
+    
+    for handle in mentions:
+        user_query = await db.execute(
+            select(models.User).filter(models.User.handle == f"@{handle}")
+        )
+        mentioned_user = user_query.scalars().first()
+        
+        if mentioned_user:
+            # Create the mention notification [cite: 1223, 1224]
+            new_notif = models.Notification(
+                type="mention",
+                message=f"{current_user.first_name} mentioned you in a comment",
+                user_id=mentioned_user.id,
+                card_id=card_id
+            )
+            db.add(new_notif)
+            await db.flush()
+            
+            # Ping their private socket room [cite: 1225]
+            await sio.emit("new_notification", {
+                "id": new_notif.id,
+                "message": new_notif.message,
+                "card_id": card_id,
+                "type": "mention"
+            }, room=f"user_{mentioned_user.id}")
+
+    await db.commit()
+    await db.refresh(new_comment)
+    new_comment.author_name = f"{current_user.first_name} {current_user.last_name}" [cite: 1226]
+    return new_comment
+
+@app.get("/cards/{card_id}/comments", response_model=List[schemas.CommentResponse])
+async def get_comments(card_id: int, db: AsyncSession = Depends(get_db)):
+    query = (
+        select(
+            models.Comment,
+            (models.User.first_name + " " + models.User.last_name).label("author_name")
+        )
+        .join(models.User, models.Comment.user_id == models.User.id)
+        .filter(models.Comment.card_id == card_id)
+        .order_by(models.Comment.created_at.asc())
+    )
+    
+    result = await db.execute(query)
+    
+    comments_with_authors = []
+    for comment_obj, author_name in result.all():
+        # This matches the 'author_name' property we set in create_comment
+        comment_obj.author_name = author_name
+        comments_with_authors.append(comment_obj)
+        
+    return comments_with_authors
+
+@app.get("/users/search", response_model=List[schemas.UserResponse])
+async def search_users(
+    q: str, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Search users by name or handle for mentions."""
+    query = (
+        select(models.User)
+        .where(
+            (models.User.first_name.ilike(f"%{q}%")) | 
+            (models.User.last_name.ilike(f"%{q}%")) |
+            (models.User.handle.ilike(f"%{q}%"))
+        )
+        .limit(5)
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
@@ -2871,6 +3596,32 @@ class Card(Base):
     
     board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    card_id = Column(Integer, ForeignKey("cards.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    
+    # Back-references
+    author = relationship("User")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String) # e.g., "mention", "status_change", "assignment"
+    message = Column(String, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Who receives the notification
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    # Link to the specific card so clicking the notification opens it
+    card_id = Column(Integer, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
 ==================================================
 FILE: .\backend\app\schemas.py
 ==================================================
@@ -2946,6 +3697,36 @@ class BoardCreate(BoardBase):
 class BoardResponse(BoardBase):
     id: int
     owner_id: int
+
+    class Config:
+        from_attributes = True
+
+        # --- COMMENT SCHEMAS ---
+class CommentBase(BaseModel):
+    content: str
+
+class CommentCreate(CommentBase):
+    card_id: int
+
+class CommentResponse(CommentBase):
+    id: int
+    created_at: datetime
+    user_id: int
+    card_id: int
+    # We'll include the author's name for the UI
+    author_name: Optional[str] = None 
+
+    class Config:
+        from_attributes = True
+
+# --- NOTIFICATION SCHEMAS ---
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    message: str
+    is_read: bool
+    created_at: datetime
+    card_id: Optional[int] = None
 
     class Config:
         from_attributes = True

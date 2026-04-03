@@ -152,10 +152,14 @@
 }
 
 .notificationItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; /* Keeps the 'X' at the top for multi-line messages */
   padding: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
 .notificationItem:hover {
@@ -171,13 +175,38 @@
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.notifText {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: #444; /* Subtle until hover */
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0 5px;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.dismissBtn:hover {
+  color: #ff4444; /* Neon red warning */
+  opacity: 1;
+  transform: scale(1.2);
 }
 
 .timeAgo {
   display: block;
-  margin-top: 5px;
+  margin-top: 6px;
   font-size: 0.7rem;
-  color: var(--text-secondary);
+  color: #555;
 }
 
 .emptyInbox {

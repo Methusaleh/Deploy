@@ -98,6 +98,7 @@ class NotificationResponse(BaseModel):
     type: str
     message: str
     is_read: bool
+    is_archived: bool
     created_at: datetime
     card_id: Optional[int] = None
 

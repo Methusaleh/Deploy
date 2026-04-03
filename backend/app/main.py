@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 from typing import List
 from datetime import datetime, timezone
+import re
 
 # Local App Imports
 from .database import engine, get_db
@@ -101,6 +102,11 @@ async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")
 
+@sio.event
+async def join_user_room(sid, user_id):
+    await sio.enter_room(sid, f"user_{user_id}")
+    print(f"Client {sid} joined private room user_{user_id}")
+
 
 # 6. Routes
 @app.get("/")
@@ -120,6 +126,14 @@ async def test_user_connection(handle: str, db: AsyncSession = Depends(get_db)):
             "email": user.email
         }
     }
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    """
+    Returns the currently authenticated user's profile.
+    Used by the frontend to initialize the UserMenu and Socket rooms.
+    """
+    return current_user
 
 @app.post("/token", response_model=schemas.Token)
 async def login_for_access_token(
@@ -251,6 +265,38 @@ async def read_my_global_cards(
     cards = await crud.get_all_user_cards(db, current_user.id)
     return cards
 
+@app.get("/notifications", response_model=List[schemas.NotificationResponse])
+async def get_notifications(db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = await db.execute(
+        select(models.Notification)
+        .filter(models.Notification.user_id == current_user.id)
+        .filter(models.Notification.is_archived == False) # <--- ONLY ACTIVE
+        .order_by(models.Notification.created_at.desc())
+    )
+    return result.scalars().all()
+
+@app.post("/notifications/read")
+async def mark_notifications_as_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Marks all unread notifications for the current user as read.
+    """
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.user_id == current_user.id)
+        .where(models.Notification.is_read == False)
+        .values(is_read=True)
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notifications marked as read"}
+
 @app.patch("/cards/{card_id}/status/")
 async def update_card_status(card_id: int, new_status: str, db: AsyncSession = Depends(get_db)):
     updated_card = await crud.update_card_status(db, card_id, new_status)
@@ -330,11 +376,20 @@ async def update_card(
         # JIRA LOGIC: Create an automated notification for the Inbox
         new_notification = models.Notification(
             type="status_change",
-            message=f"Task '{card.title}' moved from {old_status} to {new_status}",
+            message=f"Task '{card.title}' moved from {old_status.upper()} to {new_status.upper()}",
             user_id=current_user.id, 
             card_id=card.id
         )
         db.add(new_notification)
+
+        await db.flush()
+
+        await sio.emit("new_notification", {
+            "id": new_notification.id,
+            "message": new_notification.message,
+            "card_id": new_notification.card_id,
+            "type": new_notification.type
+        }, room=f"user_{current_user.id}")    
 
     # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
@@ -361,3 +416,146 @@ async def update_card(
         await db.rollback()
         print(f"Database Error: {e}")
         raise HTTPException(status_code=500, detail="Database update failed")
+    
+# --- COMMENT ROUTES ---
+
+@app.post("/cards/{card_id}/comments", response_model=schemas.CommentResponse)
+async def create_comment(
+    card_id: int,
+    comment_in: schemas.CommentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Save the comment and COMMIT immediately
+    # This ensures the record exists in Neon before we trigger any secondary logic
+    new_comment = models.Comment(
+        content=comment_in.content,
+        card_id=card_id,
+        user_id=current_user.id
+    )
+    db.add(new_comment)
+    
+    try:
+        await db.commit()
+        await db.refresh(new_comment)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to save comment")
+
+    # 2. MENTION LOGIC: Now that the comment is "Safe", search for handles
+    mentions = re.findall(r"@(\w+)", comment_in.content)
+    
+    for handle in mentions:
+        user_query = await db.execute(
+            select(models.User).filter(models.User.handle == f"@{handle}")
+        )
+        mentioned_user = user_query.scalars().first()
+        
+        if mentioned_user:
+            # Create the mention notification
+            new_notif = models.Notification(
+                type="mention",
+                message=f"{current_user.first_name} mentioned you in a comment",
+                user_id=mentioned_user.id,
+                card_id=card_id
+            )
+            db.add(new_notif)
+            await db.flush() # flush is fine here since we commit below
+            
+            # Ping their private socket room
+            await sio.emit("new_notification", {
+                "id": new_notif.id,
+                "message": new_notif.message,
+                "card_id": card_id,
+                "type": "mention"
+            }, room=f"user_{mentioned_user.id}")
+
+    # Final commit for any created notifications
+    await db.commit()
+    
+    # 3. Manually attach the name for the frontend response
+    new_comment.author_name = f"{current_user.first_name} {current_user.last_name}"
+    return new_comment
+
+@app.get("/cards/{card_id}/comments", response_model=List[schemas.CommentResponse])
+async def get_comments(card_id: int, db: AsyncSession = Depends(get_db)):
+    query = (
+        select(
+            models.Comment,
+            (models.User.first_name + " " + models.User.last_name).label("author_name")
+        )
+        .join(models.User, models.Comment.user_id == models.User.id)
+        .filter(models.Comment.card_id == card_id)
+        .order_by(models.Comment.created_at.asc())
+    )
+    
+    result = await db.execute(query)
+    
+    comments_with_authors = []
+    for comment_obj, author_name in result.all():
+        # This matches the 'author_name' property we set in create_comment
+        comment_obj.author_name = author_name
+        comments_with_authors.append(comment_obj)
+        
+    return comments_with_authors
+
+@app.get("/users/search", response_model=List[schemas.UserResponse])
+async def search_users(
+    q: str, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Search users by name or handle for mentions."""
+    query = (
+        select(models.User)
+        .where(
+            (models.User.first_name.ilike(f"%{q}%")) | 
+            (models.User.last_name.ilike(f"%{q}%")) |
+            (models.User.handle.ilike(f"%{q}%"))
+        )
+        .limit(5)
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+@app.post("/notifications/clear-all")
+async def clear_all_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Hides all notifications from the UI by archiving them.
+    They remain in the DB but won't be fetched by the GET /notifications route.
+    """
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.user_id == current_user.id)
+        .values(is_archived=True, is_read=True) # Usually, archiving implies you've 'seen' them
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notifications archived and cleared from view"}
+
+@app.post("/notifications/{notif_id}/archive")
+async def archive_single_notification(
+    notif_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.id == notif_id)
+        .where(models.Notification.user_id == current_user.id)
+        .values(is_archived=True)
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notification dismissed"}
