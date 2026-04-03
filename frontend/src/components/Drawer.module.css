@@ -121,7 +121,7 @@
 
 .descInput {
   width: 100%;
-  height: 120px; /* Reduced fixed height to make room for comments */
+  height: 120px;
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
@@ -221,7 +221,7 @@
   padding-top: 1.5rem;
   display: flex;
   flex-direction: column;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
 }
 
 .activityTitle {
@@ -238,9 +238,10 @@
   margin-bottom: 1.5rem;
   padding-right: 8px;
   scroll-behavior: smooth;
+  display: flex;
+  flex-direction: column; /* Supports newest-at-top natively if mapped that way */
 }
 
-/* Styling the activity scrollbar cyan */
 .commentList::-webkit-scrollbar {
   width: 5px;
 }
@@ -281,6 +282,11 @@
   line-height: 1.4;
 }
 
+/* --- 6. MENTIONS & AUTOCOMPLETE --- */
+.commentFormWrapper {
+  position: relative;
+}
+
 .commentForm {
   display: flex;
   gap: 10px;
@@ -316,13 +322,9 @@
   color: #000;
 }
 
-.commentFormWrapper {
-  position: relative; /* Anchor for the absolute-positioned dropdown */
-}
-
 .suggestionList {
   position: absolute;
-  bottom: 100%; /* Float above the input */
+  bottom: 100%;
   left: 0;
   width: 100%;
   background: #222;
@@ -332,7 +334,7 @@
   overflow-y: auto;
   z-index: 10;
   margin-bottom: 8px;
-  box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -5px 25px rgba(0, 0, 0, 0.6);
 }
 
 .suggestionItem {
@@ -342,12 +344,18 @@
   align-items: center;
   cursor: pointer;
   border-bottom: 1px solid #333;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
+/* Keyboard Navigation Highlight */
 .suggestionItem:hover,
 .activeSuggestion {
-  background: #333;
+  background: rgba(0, 245, 255, 0.1) !important;
+  border-left: 4px solid var(--accent-cyan);
+}
+
+.activeSuggestion .suggestName {
+  color: var(--accent-cyan);
 }
 
 .suggestName {
@@ -362,4 +370,11 @@
   background: rgba(0, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+/* Swapping handle colors when item is active */
+.activeSuggestion .suggestHandle {
+  background: var(--accent-cyan);
+  color: #000;
 }

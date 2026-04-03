@@ -51,8 +51,9 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   const [comments, setComments] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const inputRef = useRef(null);
+  const commentInputRef = useRef(null);
 
   const isNew = selectedCard?.id === "new";
 
@@ -63,7 +64,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
       try {
         const token = localStorage.getItem("token");
         const res = await fetch(
-          `http://localhost:8000/cards/${selectedCard.id}/comments`,
+          `${import.meta.env.VITE_API_URL}/cards/${selectedCard.id}/comments`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (res.ok) {
@@ -92,7 +93,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
       try {
         const token = localStorage.getItem("token");
         const res = await fetch(
-          `http://localhost:8000/users/search?q=${query}`,
+          `${import.meta.env.VITE_API_URL}/users/search?q=${query}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -101,6 +102,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           const data = await res.json();
           setSuggestions(data);
           setShowSuggestions(data.length > 0);
+          setSelectedIndex(0);
         }
       } catch (err) {
         console.error("User search failed:", err);
@@ -117,8 +119,29 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     setShowSuggestions(false);
 
     setTimeout(() => {
-      if (inputRef.current) inputRef.current.focus();
+      commentInputRef.current?.focus();
     }, 0);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!showSuggestions) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex(
+        (prev) => (prev - 1 + suggestions.length) % suggestions.length,
+      );
+    } else if (e.key === "Tab") {
+      if (suggestions[selectedIndex]) {
+        e.preventDefault();
+        applyMention(suggestions[selectedIndex].handle);
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
   };
 
   const handlePostComment = async (e) => {
@@ -128,7 +151,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:8000/cards/${selectedCard.id}/comments`,
+        `${import.meta.env.VITE_API_URL}/cards/${selectedCard.id}/comments`,
         {
           method: "POST",
           headers: {
@@ -144,7 +167,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
 
       if (res.ok) {
         const newComment = await res.json();
-        setComments((prev) => [...prev, newComment]);
+        setComments((prev) => [newComment, ...prev]);
         setCommentText("");
       }
     } catch (err) {
@@ -294,10 +317,11 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           <div className={styles.commentFormWrapper}>
             {showSuggestions && (
               <div className={styles.suggestionList}>
-                {suggestions.map((user) => (
+                {suggestions.map((user, index) => (
                   <div
                     key={user.id}
-                    className={styles.suggestionItem}
+                    // Dynamically apply the active class based on selectedIndex
+                    className={`${styles.suggestionItem} ${index === selectedIndex ? styles.activeSuggestion : ""}`}
                     onClick={() => applyMention(user.handle)}
                   >
                     <span className={styles.suggestName}>
@@ -314,8 +338,9 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
                 placeholder="Write a comment... use @ to mention"
                 value={commentText}
                 onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
                 autoComplete="off"
-                ref={inputRef}
+                ref={commentInputRef}
               />
               <button type="submit" disabled={!commentText.trim()}>
                 Send

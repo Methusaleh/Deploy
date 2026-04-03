@@ -24,7 +24,7 @@ const Auth = ({ onLoginSuccess }) => {
         params.append("username", formData.email);
         params.append("password", formData.password);
 
-        const response = await fetch("http://localhost:8000/token", {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/token`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: params,
@@ -39,11 +39,14 @@ const Auth = ({ onLoginSuccess }) => {
         onLoginSuccess();
       } else {
         // --- REGISTER LOGIC ---
-        const response = await fetch("http://localhost:8000/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        });
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/register`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          },
+        );
 
         if (!response.ok) throw new Error("Registration failed");
         setIsLogin(true); // Switch to login after success

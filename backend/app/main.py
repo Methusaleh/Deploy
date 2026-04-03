@@ -486,7 +486,7 @@ async def get_comments(card_id: int, db: AsyncSession = Depends(get_db)):
         )
         .join(models.User, models.Comment.user_id == models.User.id)
         .filter(models.Comment.card_id == card_id)
-        .order_by(models.Comment.created_at.asc())
+        .order_by(models.Comment.created_at.desc())
     )
     
     result = await db.execute(query)

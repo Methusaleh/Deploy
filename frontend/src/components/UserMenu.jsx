@@ -21,18 +21,24 @@ const UserMenu = ({ onLogout }) => {
         const token = localStorage.getItem("token");
         const headers = { Authorization: `Bearer ${token}` };
 
-        const userRes = await fetch("http://localhost:8000/users/me", {
-          headers,
-        });
+        const userRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/me`,
+          {
+            headers,
+          },
+        );
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
           socket.emit("join_user_room", user.id);
         }
 
-        const notifRes = await fetch("http://localhost:8000/notifications", {
-          headers,
-        });
+        const notifRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/notifications`,
+          {
+            headers,
+          },
+        );
         if (notifRes.ok) {
           const notifs = await notifRes.json();
           setNotifications(notifs);
@@ -56,10 +62,13 @@ const UserMenu = ({ onLogout }) => {
   const clearAllNotifications = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/notifications/clear-all", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/notifications/clear-all`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (res.ok) {
         setNotifications([]); // Clear from UI instantly
@@ -76,10 +85,13 @@ const UserMenu = ({ onLogout }) => {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/notifications/read", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/notifications/read`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (res.ok) {
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -108,7 +120,7 @@ const UserMenu = ({ onLogout }) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:8000/notifications/${notifId}/archive`,
+        `${import.meta.env.VITE_API_URL}/notifications/${notifId}/archive`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },

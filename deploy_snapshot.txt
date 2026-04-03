@@ -978,7 +978,7 @@ FILE: ./frontend/src\components\Column.module.css
 ==================================================
 FILE: ./frontend/src\components\Drawer.jsx
 ==================================================
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useBoards } from "../context/BoardContext";
 import { updateCard, createCard, deleteCard } from "../api/boards";
 import styles from "./Drawer.module.css";
@@ -1031,6 +1031,9 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   const [comments, setComments] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const commentInputRef = useRef(null);
 
   const isNew = selectedCard?.id === "new";
 
@@ -1079,6 +1082,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           const data = await res.json();
           setSuggestions(data);
           setShowSuggestions(data.length > 0);
+          setSelectedIndex(0);
         }
       } catch (err) {
         console.error("User search failed:", err);
@@ -1093,6 +1097,31 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     words.pop(); // Remove partial handle
     setCommentText([...words, userHandle, ""].join(" "));
     setShowSuggestions(false);
+
+    setTimeout(() => {
+      commentInputRef.current?.focus();
+    }, 0);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!showSuggestions) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex(
+        (prev) => (prev - 1 + suggestions.length) % suggestions.length,
+      );
+    } else if (e.key === "Tab") {
+      if (suggestions[selectedIndex]) {
+        e.preventDefault();
+        applyMention(suggestions[selectedIndex].handle);
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
   };
 
   const handlePostComment = async (e) => {
@@ -1118,7 +1147,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
 
       if (res.ok) {
         const newComment = await res.json();
-        setComments((prev) => [...prev, newComment]);
+        setComments((prev) => [newComment, ...prev]);
         setCommentText("");
       }
     } catch (err) {
@@ -1288,7 +1317,9 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
                 placeholder="Write a comment... use @ to mention"
                 value={commentText}
                 onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
                 autoComplete="off"
+                ref={commentInputRef}
               />
               <button type="submit" disabled={!commentText.trim()}>
                 Send
@@ -1429,7 +1460,7 @@ FILE: ./frontend/src\components\Drawer.module.css
 
 .descInput {
   width: 100%;
-  height: 120px; /* Reduced fixed height to make room for comments */
+  height: 120px;
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
@@ -1529,7 +1560,7 @@ FILE: ./frontend/src\components\Drawer.module.css
   padding-top: 1.5rem;
   display: flex;
   flex-direction: column;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
 }
 
 .activityTitle {
@@ -1546,9 +1577,10 @@ FILE: ./frontend/src\components\Drawer.module.css
   margin-bottom: 1.5rem;
   padding-right: 8px;
   scroll-behavior: smooth;
+  display: flex;
+  flex-direction: column; /* Supports newest-at-top natively if mapped that way */
 }
 
-/* Styling the activity scrollbar cyan */
 .commentList::-webkit-scrollbar {
   width: 5px;
 }
@@ -1589,6 +1621,11 @@ FILE: ./frontend/src\components\Drawer.module.css
   line-height: 1.4;
 }
 
+/* --- 6. MENTIONS & AUTOCOMPLETE --- */
+.commentFormWrapper {
+  position: relative;
+}
+
 .commentForm {
   display: flex;
   gap: 10px;
@@ -1624,13 +1661,9 @@ FILE: ./frontend/src\components\Drawer.module.css
   color: #000;
 }
 
-.commentFormWrapper {
-  position: relative; /* Anchor for the absolute-positioned dropdown */
-}
-
 .suggestionList {
   position: absolute;
-  bottom: 100%; /* Float above the input */
+  bottom: 100%;
   left: 0;
   width: 100%;
   background: #222;
@@ -1640,7 +1673,7 @@ FILE: ./frontend/src\components\Drawer.module.css
   overflow-y: auto;
   z-index: 10;
   margin-bottom: 8px;
-  box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -5px 25px rgba(0, 0, 0, 0.6);
 }
 
 .suggestionItem {
@@ -1650,12 +1683,18 @@ FILE: ./frontend/src\components\Drawer.module.css
   align-items: center;
   cursor: pointer;
   border-bottom: 1px solid #333;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
+/* Keyboard Navigation Highlight */
 .suggestionItem:hover,
 .activeSuggestion {
-  background: #333;
+  background: rgba(0, 245, 255, 0.1) !important;
+  border-left: 4px solid var(--accent-cyan);
+}
+
+.activeSuggestion .suggestName {
+  color: var(--accent-cyan);
 }
 
 .suggestName {
@@ -1670,6 +1709,13 @@ FILE: ./frontend/src\components\Drawer.module.css
   background: rgba(0, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+/* Swapping handle colors when item is active */
+.activeSuggestion .suggestHandle {
+  background: var(--accent-cyan);
+  color: #000;
 }
 
 ==================================================
@@ -2294,9 +2340,13 @@ FILE: ./frontend/src\components\UserMenu.jsx
 // frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
+import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
 import styles from "./UserMenu.module.css";
 
 const UserMenu = ({ onLogout }) => {
+  // 2. EXTRACT CONTEXT
+  const { cards, dispatch } = useBoards();
+
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -2310,20 +2360,15 @@ const UserMenu = ({ onLogout }) => {
         const token = localStorage.getItem("token");
         const headers = { Authorization: `Bearer ${token}` };
 
-        // Fetch User Profile
         const userRes = await fetch("http://localhost:8000/users/me", {
           headers,
         });
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
-
-          // CRITICAL: Join the private notification room
           socket.emit("join_user_room", user.id);
-          console.log(`Joined private room: user_${user.id}`);
         }
 
-        // Fetch Initial Notifications
         const notifRes = await fetch("http://localhost:8000/notifications", {
           headers,
         });
@@ -2335,23 +2380,35 @@ const UserMenu = ({ onLogout }) => {
         console.error("UserMenu Init Error:", err);
       }
     };
-
     initUserMenu();
   }, []);
 
   // 2. LIVE SOCKET LISTENER
   useEffect(() => {
     socket.on("new_notification", (newNotif) => {
-      console.log("🔔 Inbox Update:", newNotif);
       setNotifications((prev) => [newNotif, ...prev]);
     });
-
-    return () => {
-      socket.off("new_notification");
-    };
+    return () => socket.off("new_notification");
   }, []);
 
-  // 3. MARK AS READ LOGIC
+  // 3. UPDATED: CLEAR ALL (ARCHIVE ALL)
+  const clearAllNotifications = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:8000/notifications/clear-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        setNotifications([]); // Clear from UI instantly
+      }
+    } catch (err) {
+      console.error("Failed to clear all notifications:", err);
+    }
+  };
+
+  // 4. MARK AS READ LOGIC
   const markAllAsRead = async () => {
     const unreadExist = notifications.some((n) => !n.is_read);
     if (!unreadExist) return;
@@ -2364,7 +2421,6 @@ const UserMenu = ({ onLogout }) => {
       });
 
       if (res.ok) {
-        // Update local state so badge disappears immediately
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       }
     } catch (err) {
@@ -2372,19 +2428,48 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
-  // 4. TOGGLE HANDLERS
+  // 5. TELEPORT TO CARD
+  const handleNotificationClick = (notif) => {
+    if (!notif.card_id) return;
+
+    const targetCard = cards.find((c) => c.id === notif.card_id);
+
+    if (targetCard) {
+      dispatch({ type: "setSelectedCard", payload: targetCard });
+      setIsInboxOpen(false); // Close the bell
+    }
+  };
+
+  // 6. DISMISS INDIVIDUAL (ARCHIVE)
+  const dismissNotification = async (e, notifId) => {
+    e.stopPropagation(); // Prevents handleNotificationClick from firing
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `http://localhost:8000/notifications/${notifId}/archive`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (res.ok) {
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }
+    } catch (err) {
+      console.error("Failed to dismiss notification:", err);
+    }
+  };
+
+  // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
     setIsInboxOpen(nextState);
     setIsAccountOpen(false);
-
-    // If we are opening the inbox, trigger the read logic
-    if (nextState === true) {
-      markAllAsRead();
-    }
+    if (nextState === true) markAllAsRead();
   };
 
-  // 5. UI HELPERS (Click Outside)
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -2415,7 +2500,7 @@ const UserMenu = ({ onLogout }) => {
               <h3>Inbox</h3>
               <button
                 className={styles.clearBtn}
-                onClick={() => setNotifications([])}
+                onClick={clearAllNotifications}
               >
                 Clear All
               </button>
@@ -2426,17 +2511,26 @@ const UserMenu = ({ onLogout }) => {
                   <div
                     key={n.id}
                     className={styles.notificationItem}
-                    data-unread={!n.is_read}
+                    onClick={() => handleNotificationClick(n)}
                   >
-                    <p>{n.message}</p>
-                    <span className={styles.timeAgo}>
-                      {n.created_at
-                        ? new Date(n.created_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "Just now"}
-                    </span>
+                    <div className={styles.notifContent}>
+                      <p>{n.message}</p>
+                      <span className={styles.timeAgo}>
+                        {n.created_at
+                          ? new Date(n.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "Just now"}
+                      </span>
+                    </div>
+                    {/* DISMISS BUTTON (X) */}
+                    <button
+                      className={styles.dismissBtn}
+                      onClick={(e) => dismissNotification(e, n.id)}
+                    >
+                      &times;
+                    </button>
                   </div>
                 ))
               ) : (
@@ -2639,10 +2733,14 @@ FILE: ./frontend/src\components\UserMenu.module.css
 }
 
 .notificationItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; /* Keeps the 'X' at the top for multi-line messages */
   padding: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
 .notificationItem:hover {
@@ -2658,13 +2756,38 @@ FILE: ./frontend/src\components\UserMenu.module.css
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.notifText {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: #444; /* Subtle until hover */
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0 5px;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.dismissBtn:hover {
+  color: #ff4444; /* Neon red warning */
+  opacity: 1;
+  transform: scale(1.2);
 }
 
 .timeAgo {
   display: block;
-  margin-top: 5px;
+  margin-top: 6px;
   font-size: 0.7rem;
-  color: var(--text-secondary);
+  color: #555;
 }
 
 .emptyInbox {
@@ -3271,15 +3394,12 @@ async def read_my_global_cards(
     return cards
 
 @app.get("/notifications", response_model=List[schemas.NotificationResponse])
-async def get_notifications(
-    db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
+async def get_notifications(db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     result = await db.execute(
         select(models.Notification)
         .filter(models.Notification.user_id == current_user.id)
+        .filter(models.Notification.is_archived == False) # <--- ONLY ACTIVE
         .order_by(models.Notification.created_at.desc())
-        .limit(20)
     )
     return result.scalars().all()
 
@@ -3434,16 +3554,23 @@ async def create_comment(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Save the comment 
+    # 1. Save the comment and COMMIT immediately
+    # This ensures the record exists in Neon before we trigger any secondary logic
     new_comment = models.Comment(
         content=comment_in.content,
         card_id=card_id,
         user_id=current_user.id
     )
     db.add(new_comment)
-    await db.flush() 
+    
+    try:
+        await db.commit()
+        await db.refresh(new_comment)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to save comment")
 
-    # 2. MENTION LOGIC: Find handles like @aaron_kipf [cite: 1222]
+    # 2. MENTION LOGIC: Now that the comment is "Safe", search for handles
     mentions = re.findall(r"@(\w+)", comment_in.content)
     
     for handle in mentions:
@@ -3453,7 +3580,7 @@ async def create_comment(
         mentioned_user = user_query.scalars().first()
         
         if mentioned_user:
-            # Create the mention notification [cite: 1223, 1224]
+            # Create the mention notification
             new_notif = models.Notification(
                 type="mention",
                 message=f"{current_user.first_name} mentioned you in a comment",
@@ -3461,9 +3588,9 @@ async def create_comment(
                 card_id=card_id
             )
             db.add(new_notif)
-            await db.flush()
+            await db.flush() # flush is fine here since we commit below
             
-            # Ping their private socket room [cite: 1225]
+            # Ping their private socket room
             await sio.emit("new_notification", {
                 "id": new_notif.id,
                 "message": new_notif.message,
@@ -3471,9 +3598,11 @@ async def create_comment(
                 "type": "mention"
             }, room=f"user_{mentioned_user.id}")
 
+    # Final commit for any created notifications
     await db.commit()
-    await db.refresh(new_comment)
-    new_comment.author_name = f"{current_user.first_name} {current_user.last_name}" [cite: 1226]
+    
+    # 3. Manually attach the name for the frontend response
+    new_comment.author_name = f"{current_user.first_name} {current_user.last_name}"
     return new_comment
 
 @app.get("/cards/{card_id}/comments", response_model=List[schemas.CommentResponse])
@@ -3485,7 +3614,7 @@ async def get_comments(card_id: int, db: AsyncSession = Depends(get_db)):
         )
         .join(models.User, models.Comment.user_id == models.User.id)
         .filter(models.Comment.card_id == card_id)
-        .order_by(models.Comment.created_at.asc())
+        .order_by(models.Comment.created_at.desc())
     )
     
     result = await db.execute(query)
@@ -3516,6 +3645,48 @@ async def search_users(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+@app.post("/notifications/clear-all")
+async def clear_all_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Hides all notifications from the UI by archiving them.
+    They remain in the DB but won't be fetched by the GET /notifications route.
+    """
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.user_id == current_user.id)
+        .values(is_archived=True, is_read=True) # Usually, archiving implies you've 'seen' them
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notifications archived and cleared from view"}
+
+@app.post("/notifications/{notif_id}/archive")
+async def archive_single_notification(
+    notif_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from sqlalchemy import update
+    
+    query = (
+        update(models.Notification)
+        .where(models.Notification.id == notif_id)
+        .where(models.Notification.user_id == current_user.id)
+        .values(is_archived=True)
+    )
+    
+    await db.execute(query)
+    await db.commit()
+    
+    return {"message": "Notification dismissed"}
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
@@ -3616,6 +3787,7 @@ class Notification(Base):
     type = Column(String) # e.g., "mention", "status_change", "assignment"
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Who receives the notification
@@ -3725,6 +3897,7 @@ class NotificationResponse(BaseModel):
     type: str
     message: str
     is_read: bool
+    is_archived: bool
     created_at: datetime
     card_id: Optional[int] = None
 
