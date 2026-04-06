@@ -8,23 +8,23 @@
   gap: 20px; /* Space between Bell and Avatar */
 }
 
-.avatarCircle {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-subtle);
+.avatarWrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--accent-cyan);
-  font-weight: 700;
+  border-radius: 50%;
+
+  /* This creates the glow effect around the component */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+
+  /* We add a small offset so the scale effect doesn't jitter */
+  border: 2px solid transparent;
 }
 
-.avatarCircle:hover {
+.avatarWrapper:hover {
+  /* This adds that nice cyan ring around your UserAvatar component on hover */
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
   transform: scale(1.05);
@@ -32,7 +32,7 @@
 
 .dropdown {
   position: absolute;
-  top: 55px;
+  top: 60px;
   right: 0;
   background: #111; /* Darker background for higher contrast */
   border: 1px solid var(--border-subtle);

@@ -104,3 +104,6 @@ class NotificationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InvitationCreate(BaseModel):
+    recipient_id: int

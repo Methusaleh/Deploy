@@ -21,7 +21,41 @@
 .headerMain {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* Pushes the count to the far right */
+  justify-content: space-between;
+  width: 100%;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.shareBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shareBtn:hover {
+  background: rgba(0, 245, 255, 0.08); /* Using your cyan variable */
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(0, 245, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.shareBtn span {
+  font-size: 18px; /* Material icon size */
 }
 
 .totalCount {

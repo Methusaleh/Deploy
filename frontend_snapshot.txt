@@ -401,16 +401,18 @@ FILE: ./frontend/src\components\Auth.module.css
 ==================================================
 FILE: ./frontend/src\components\Board.jsx
 ==================================================
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { useBoards } from "../context/BoardContext";
 import { getBoardCards, updateCard } from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
 import Home from "./Home";
+import ShareModal from "./ShareModal";
 
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Extract ID safely
   const { id } = activeBoard || {};
@@ -499,13 +501,23 @@ function Board() {
       <div className={styles.boardContainer}>
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <h1>{activeBoard.title}</h1>
+            <div className={styles.titleGroup}>
+              <h1>{activeBoard.title}</h1>
+              <button
+                className={styles.shareBtn}
+                onClick={() => setIsShareModalOpen(true)}
+              >
+                <span className="material-icons">person_add</span>
+                <span>Share</span>
+              </button>
+            </div>
+
+            <div className={styles.totalCount}>{cards.length} Cards</div>
           </div>
         </header>
 
         <div className={styles.grid}>
           {COLUMNS.map((column) => {
-            // Filter cards that belong to this specific column
             const columnCards = cards.filter(
               (card) => card.status?.toLowerCase() === column.id.toLowerCase(),
             );
@@ -521,6 +533,13 @@ function Board() {
             );
           })}
         </div>
+
+        {isShareModalOpen && (
+          <ShareModal
+            boardId={activeBoard.id}
+            onClose={() => setIsShareModalOpen(false)}
+          />
+        )}
       </div>
     </DragDropContext>
   );
@@ -554,7 +573,41 @@ FILE: ./frontend/src\components\Board.module.css
 .headerMain {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* Pushes the count to the far right */
+  justify-content: space-between;
+  width: 100%;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.shareBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shareBtn:hover {
+  background: rgba(0, 245, 255, 0.08); /* Using your cyan variable */
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(0, 245, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.shareBtn span {
+  font-size: 18px; /* Material icon size */
 }
 
 .totalCount {
@@ -2135,6 +2188,198 @@ FILE: ./frontend/src\components\Home.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\ShareModal.jsx
+==================================================
+// frontend/src/components/ShareModal.jsx
+import { useState, useEffect } from "react";
+import api from "../api/axios";
+import UserAvatar from "./UserAvatar";
+import styles from "./ShareModal.module.css";
+
+const ShareModal = ({ boardId, onClose }) => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (query.trim().length > 1) {
+        try {
+          const res = await api.get(`/users/search?q=${query}`);
+          setResults(res.data);
+        } catch (err) {
+          console.error("Search error:", err);
+        }
+      } else {
+        setResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const sendInvite = async (userId) => {
+    try {
+      await api.post(`/boards/${boardId}/invite`, { recipient_id: userId });
+      alert("Invitation sent!");
+      onClose();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error sending invitation");
+    }
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <h3>Collaborators</h3>
+        <input
+          className={styles.searchInput}
+          type="text"
+          placeholder="Search by name or handle..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoFocus
+        />
+        <div className={styles.resultsList}>
+          {results.map((user) => (
+            <div
+              key={user.id}
+              className={styles.userRow}
+              onClick={() => sendInvite(user.id)}
+            >
+              <UserAvatar
+                name={`${user.first_name} ${user.last_name}`}
+                size={32}
+              />
+              <div className={styles.userDetails}>
+                <span>
+                  {user.first_name} {user.last_name}
+                </span>
+                <small>@{user.handle}</small>
+              </div>
+              <button className={styles.inviteBtn}>Invite</button>
+            </div>
+          ))}
+          {query.length > 1 && results.length === 0 && (
+            <p
+              style={{ color: "#555", fontSize: "0.8rem", textAlign: "center" }}
+            >
+              No users found
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ShareModal;
+
+==================================================
+FILE: ./frontend/src\components\ShareModal.module.css
+==================================================
+/* frontend/src/components/ShareModal.module.css */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.modalContent {
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 400px;
+  padding: 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+}
+
+.modalContent h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: white;
+  margin-bottom: 15px;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--accent-cyan);
+}
+
+.resultsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.userRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.userRow:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.userDetails {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.userDetails span {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.userDetails small {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.inviteBtn {
+  background: transparent;
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inviteBtn:hover {
+  background: var(--accent-cyan);
+  color: black;
+}
+
+==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
 import { useBoards } from "../context/BoardContext";
@@ -2264,12 +2509,87 @@ FILE: ./frontend/src\components\Sidebar.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\UserAvatar.jsx
+==================================================
+// frontend/src/components/UserAvatar.jsx
+import React from "react";
+import styles from "./UserAvatar.module.css";
+
+const COLORS = [
+  "#475569", // Slate
+  "#4f46e5", // Indigo
+  "#059669", // Emerald
+  "#d97706", // Amber
+  "#e11d48", // Rose
+  "#7c3aed", // Violet
+];
+
+const UserAvatar = ({ name, size = 40 }) => {
+  // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
+  const getInitials = (str) => {
+    if (!str) return "?";
+    const parts = str.trim().split(/\s+/);
+    if (parts.length > 1) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  };
+
+  // 2. Consistent Color Hash
+  const getColor = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % COLORS.length;
+    return COLORS[index];
+  };
+
+  const dynamicStyle = {
+    width: `${size}px`,
+    height: `${size}px`,
+    backgroundColor: getColor(name || ""),
+    fontSize: `${size * 0.4}px`,
+  };
+
+  return (
+    <div className={styles.avatar} style={dynamicStyle} title={name}>
+      {getInitials(name)}
+    </div>
+  );
+};
+
+export default UserAvatar;
+
+==================================================
+FILE: ./frontend/src\components\UserAvatar.module.css
+==================================================
+/* frontend/src/components/UserAvatar.module.css */
+.avatar {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  user-select: none;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+  transform: scale(1.05);
+  cursor: default;
+}
+
+==================================================
 FILE: ./frontend/src\components\UserMenu.jsx
 ==================================================
 // frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
 import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
+import UserAvatar from "./UserAvatar";
 import styles from "./UserMenu.module.css";
 
 const UserMenu = ({ onLogout }) => {
@@ -2486,13 +2806,18 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarCircle}
+        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
         }}
       >
-        <span>{userData ? userData.first_name[0] : "A"}</span>
+        <UserAvatar
+          name={
+            userData ? `${userData.first_name} ${userData.last_name}` : "Aaron"
+          }
+          size={36}
+        />
       </div>
 
       {isAccountOpen && (
@@ -2530,23 +2855,23 @@ FILE: ./frontend/src\components\UserMenu.module.css
   gap: 20px; /* Space between Bell and Avatar */
 }
 
-.avatarCircle {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-subtle);
+.avatarWrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--accent-cyan);
-  font-weight: 700;
+  border-radius: 50%;
+
+  /* This creates the glow effect around the component */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+
+  /* We add a small offset so the scale effect doesn't jitter */
+  border: 2px solid transparent;
 }
 
-.avatarCircle:hover {
+.avatarWrapper:hover {
+  /* This adds that nice cyan ring around your UserAvatar component on hover */
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
   transform: scale(1.05);
@@ -2554,7 +2879,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
 
 .dropdown {
   position: absolute;
-  top: 55px;
+  top: 60px;
   right: 0;
   background: #111; /* Darker background for higher contrast */
   border: 1px solid var(--border-subtle);
@@ -2785,6 +3110,7 @@ const initialState = {
   cards: [],
   selectedCard: null,
   isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
+  userData: null,
 };
 
 function reducer(state, action) {
@@ -2792,7 +3118,7 @@ function reducer(state, action) {
     case "loading":
       return { ...state, status: "loading" };
     case "login":
-      return { ...state, isAuthenticated: true };
+      return { ...state, isAuthenticated: true, userData: action.payload };
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
@@ -2834,8 +3160,7 @@ function BoardProvider({ children }) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
-          // We'll update getBoards soon to stop using hardcoded '1'
-          const data = await getBoards(1);
+          const data = await getBoards(state.userData.id);
           dispatch({ type: "boardsLoaded", payload: data });
         } catch {
           dispatch({ type: "error" });
@@ -2852,6 +3177,17 @@ function BoardProvider({ children }) {
       console.log(`Requested to join room: ${state.activeBoard.id}`);
     }
   }, [state.activeBoard?.id]); // Runs every time the ID changes
+
+  // --- EFFECT: Join Private User Room for Notifications ---
+  useEffect(() => {
+    // We need the user ID to join the correct room
+    if (state.isAuthenticated && state.userData?.id) {
+      socket.emit("join_user_room", state.userData.id);
+      console.log(
+        `Joined private notification room: user_${state.userData.id}`,
+      );
+    }
+  }, [state.isAuthenticated, state.userData?.id]);
 
   useEffect(() => {
     // --- 1. UPDATE LISTENER ---
@@ -2885,11 +3221,20 @@ function BoardProvider({ children }) {
       }
     });
 
+    // 4. NEW: Listen for Invitations/Notifications
+    socket.on("new_notification", (notif) => {
+      console.log("New notification received!", notif);
+      // Here you can trigger a dispatch to update an 'unread' count
+      // or just let the UserMenu fetch the latest list.
+      // dispatch({ type: "addNotification", payload: notif });
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");
       socket.off("card_created");
+      socket.off("new_notification");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 

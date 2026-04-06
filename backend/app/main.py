@@ -507,13 +507,18 @@ async def search_users(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Search users by name or handle for mentions."""
+    """Search users for mentions or board invitations, excluding self."""
     query = (
         select(models.User)
         .where(
-            (models.User.first_name.ilike(f"%{q}%")) | 
-            (models.User.last_name.ilike(f"%{q}%")) |
-            (models.User.handle.ilike(f"%{q}%"))
+            # 1. Search by name or handle
+            (
+                (models.User.first_name.ilike(f"%{q}%")) | 
+                (models.User.last_name.ilike(f"%{q}%")) |
+                (models.User.handle.ilike(f"%{q}%"))
+            ) & 
+            # 2. Don't include the person currently searching
+            (models.User.id != current_user.id)
         )
         .limit(5)
     )
@@ -561,3 +566,93 @@ async def archive_single_notification(
     await db.commit()
     
     return {"message": "Notification dismissed"}
+
+@app.post("/boards/{board_id}/invite")
+async def invite_to_board(
+    board_id: int,
+    invite_data: InvitationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Verify Board Ownership
+    board_query = await db.execute(select(models.Board).where(models.Board.id == board_id))
+    board = board_query.scalar_one_or_none()
+    
+    if not board or board.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the board owner can invite members")
+
+    # 2. Check if user is already a member
+    # (Assuming you have the board_members relationship or association table set up)
+    member_check = await db.execute(
+        select(models.User).join(models.board_members).where(
+            models.board_members.c.board_id == board_id,
+            models.board_members.c.user_id == invite_data.recipient_id
+        )
+    )
+    if member_check.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User is already a member of this board")
+
+    # 3. Create the Invitation Record
+    new_invite = models.BoardInvitation(
+        board_id=board_id,
+        sender_id=current_user.id,
+        recipient_id=invite_data.recipient_id,
+        status="pending"
+    )
+    db.add(new_invite)
+    
+    # 4. Create an In-App Notification
+    new_notif = models.Notification(
+        user_id=invite_data.recipient_id,
+        message=f"{current_user.first_name} invited you to join the board: {board.title}",
+        link=f"/boards/{board_id}" # We can use this to trigger the accept modal
+    )
+    db.add(new_notif)
+    
+    await db.commit()
+
+    # 5. Socket.io Real-time Alert
+    # This triggers the red dot on the recipient's bell icon instantly
+    await sio.emit("new_notification", {
+        "id": new_notif.id,
+        "message": new_notif.message,
+        "created_at": str(new_notif.created_at)
+    }, room=f"user_{invite_data.recipient_id}")
+
+    return {"message": "Invitation sent successfully"}
+
+@app.post("/boards/invitations/{invite_id}/accept")
+async def accept_invitation(
+    invite_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Find the pending invitation for the current user
+    query = select(models.BoardInvitation).where(
+        models.BoardInvitation.id == invite_id,
+        models.BoardInvitation.recipient_id == current_user.id,
+        models.BoardInvitation.status == "pending"
+    )
+    result = await db.execute(query)
+    invitation = result.scalar_one_or_none()
+
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found or already processed")
+
+    # 2. Get the board
+    board_query = await db.execute(select(models.Board).where(models.Board.id == invitation.board_id))
+    board = board_query.scalar_one_or_none()
+    
+    if not board:
+        raise HTTPException(status_code=404, detail="Board no longer exists")
+
+    # 3. Add user to board_members association table
+    # This assumes your Board model has: members = relationship("User", secondary=board_members...)
+    board.members.append(current_user)
+    
+    # 4. Update invitation status
+    invitation.status = "accepted"
+    
+    await db.commit()
+    
+    return {"message": "Successfully joined the board", "board_id": board.id}

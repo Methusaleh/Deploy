@@ -59,6 +59,22 @@ class Board(Base):
     members = relationship("User", secondary=board_members, back_populates="shared_boards")
     cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
 
+class BoardInvitation(Base):
+    __tablename__ = "board_invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    recipient_id = Column(Integer, ForeignKey("users.id"))
+    # status can be: pending, accepted, declined
+    status = Column(String, default="pending") 
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships to make fetching easy
+    board = relationship("Board")
+    sender = relationship("User", foreign_keys=[sender_id])
+    recipient = relationship("User", foreign_keys=[recipient_id])
+
 class Card(Base):
     __tablename__ = "cards"
 

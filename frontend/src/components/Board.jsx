@@ -1,13 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { useBoards } from "../context/BoardContext";
 import { getBoardCards, updateCard } from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
 import Home from "./Home";
+import ShareModal from "./ShareModal";
 
 function Board() {
   const { activeBoard, cards, status, dispatch } = useBoards();
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Extract ID safely
   const { id } = activeBoard || {};
@@ -96,13 +98,23 @@ function Board() {
       <div className={styles.boardContainer}>
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <h1>{activeBoard.title}</h1>
+            <div className={styles.titleGroup}>
+              <h1>{activeBoard.title}</h1>
+              <button
+                className={styles.shareBtn}
+                onClick={() => setIsShareModalOpen(true)}
+              >
+                <span className="material-icons">person_add</span>
+                <span>Share</span>
+              </button>
+            </div>
+
+            <div className={styles.totalCount}>{cards.length} Cards</div>
           </div>
         </header>
 
         <div className={styles.grid}>
           {COLUMNS.map((column) => {
-            // Filter cards that belong to this specific column
             const columnCards = cards.filter(
               (card) => card.status?.toLowerCase() === column.id.toLowerCase(),
             );
@@ -118,6 +130,13 @@ function Board() {
             );
           })}
         </div>
+
+        {isShareModalOpen && (
+          <ShareModal
+            boardId={activeBoard.id}
+            onClose={() => setIsShareModalOpen(false)}
+          />
+        )}
       </div>
     </DragDropContext>
   );

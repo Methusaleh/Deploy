@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
 import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
+import UserAvatar from "./UserAvatar";
 import styles from "./UserMenu.module.css";
 
 const UserMenu = ({ onLogout }) => {
@@ -218,13 +219,18 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarCircle}
+        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
         }}
       >
-        <span>{userData ? userData.first_name[0] : "A"}</span>
+        <UserAvatar
+          name={
+            userData ? `${userData.first_name} ${userData.last_name}` : "Aaron"
+          }
+          size={36}
+        />
       </div>
 
       {isAccountOpen && (

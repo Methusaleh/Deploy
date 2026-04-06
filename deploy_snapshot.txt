@@ -2338,12 +2338,87 @@ FILE: ./frontend/src\components\Sidebar.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\UserAvatar.jsx
+==================================================
+// frontend/src/components/UserAvatar.jsx
+import React from "react";
+import styles from "./UserAvatar.module.css";
+
+const COLORS = [
+  "#475569", // Slate
+  "#4f46e5", // Indigo
+  "#059669", // Emerald
+  "#d97706", // Amber
+  "#e11d48", // Rose
+  "#7c3aed", // Violet
+];
+
+const UserAvatar = ({ name, size = 40 }) => {
+  // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
+  const getInitials = (str) => {
+    if (!str) return "?";
+    const parts = str.trim().split(/\s+/);
+    if (parts.length > 1) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  };
+
+  // 2. Consistent Color Hash
+  const getColor = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % COLORS.length;
+    return COLORS[index];
+  };
+
+  const dynamicStyle = {
+    width: `${size}px`,
+    height: `${size}px`,
+    backgroundColor: getColor(name || ""),
+    fontSize: `${size * 0.4}px`,
+  };
+
+  return (
+    <div className={styles.avatar} style={dynamicStyle} title={name}>
+      {getInitials(name)}
+    </div>
+  );
+};
+
+export default UserAvatar;
+
+==================================================
+FILE: ./frontend/src\components\UserAvatar.module.css
+==================================================
+/* frontend/src/components/UserAvatar.module.css */
+.avatar {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  user-select: none;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+  transform: scale(1.05);
+  cursor: default;
+}
+
+==================================================
 FILE: ./frontend/src\components\UserMenu.jsx
 ==================================================
 // frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
 import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
+import UserAvatar from "./UserAvatar";
 import styles from "./UserMenu.module.css";
 
 const UserMenu = ({ onLogout }) => {
@@ -2560,13 +2635,18 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarCircle}
+        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
         }}
       >
-        <span>{userData ? userData.first_name[0] : "A"}</span>
+        <UserAvatar
+          name={
+            userData ? `${userData.first_name} ${userData.last_name}` : "Aaron"
+          }
+          size={36}
+        />
       </div>
 
       {isAccountOpen && (
@@ -2604,23 +2684,23 @@ FILE: ./frontend/src\components\UserMenu.module.css
   gap: 20px; /* Space between Bell and Avatar */
 }
 
-.avatarCircle {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-subtle);
+.avatarWrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--accent-cyan);
-  font-weight: 700;
+  border-radius: 50%;
+
+  /* This creates the glow effect around the component */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+
+  /* We add a small offset so the scale effect doesn't jitter */
+  border: 2px solid transparent;
 }
 
-.avatarCircle:hover {
+.avatarWrapper:hover {
+  /* This adds that nice cyan ring around your UserAvatar component on hover */
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
   transform: scale(1.05);
@@ -2628,7 +2708,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
 
 .dropdown {
   position: absolute;
-  top: 55px;
+  top: 60px;
   right: 0;
   background: #111; /* Darker background for higher contrast */
   border: 1px solid var(--border-subtle);
@@ -2859,6 +2939,7 @@ const initialState = {
   cards: [],
   selectedCard: null,
   isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
+  userData: null,
 };
 
 function reducer(state, action) {
@@ -2866,7 +2947,7 @@ function reducer(state, action) {
     case "loading":
       return { ...state, status: "loading" };
     case "login":
-      return { ...state, isAuthenticated: true };
+      return { ...state, isAuthenticated: true, userData: action.payload };
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
@@ -2908,8 +2989,7 @@ function BoardProvider({ children }) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
-          // We'll update getBoards soon to stop using hardcoded '1'
-          const data = await getBoards(1);
+          const data = await getBoards(state.userData.id);
           dispatch({ type: "boardsLoaded", payload: data });
         } catch {
           dispatch({ type: "error" });
@@ -2926,6 +3006,17 @@ function BoardProvider({ children }) {
       console.log(`Requested to join room: ${state.activeBoard.id}`);
     }
   }, [state.activeBoard?.id]); // Runs every time the ID changes
+
+  // --- EFFECT: Join Private User Room for Notifications ---
+  useEffect(() => {
+    // We need the user ID to join the correct room
+    if (state.isAuthenticated && state.userData?.id) {
+      socket.emit("join_user_room", state.userData.id);
+      console.log(
+        `Joined private notification room: user_${state.userData.id}`,
+      );
+    }
+  }, [state.isAuthenticated, state.userData?.id]);
 
   useEffect(() => {
     // --- 1. UPDATE LISTENER ---
@@ -2959,11 +3050,20 @@ function BoardProvider({ children }) {
       }
     });
 
+    // 4. NEW: Listen for Invitations/Notifications
+    socket.on("new_notification", (notif) => {
+      console.log("New notification received!", notif);
+      // Here you can trigger a dispatch to update an 'unread' count
+      // or just let the UserMenu fetch the latest list.
+      // dispatch({ type: "addNotification", payload: notif });
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");
       socket.off("card_created");
+      socket.off("new_notification");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 
@@ -3062,6 +3162,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from typing import Optional
+import os
 
 # 1. Password Hashing Configuration
 # bcrypt is the industry standard for hashing passwords securely
@@ -3069,9 +3170,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 2. JWT Configuration
 # IMPORTANT: In a real production app, move these to an .env file!
-SECRET_KEY = "deploy_ultra_secret_key_2026" 
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440 # 24 hours
+SECRET_KEY = os.getenv("SECRET_KEY", "deploy_ultra_secret_key_2026") 
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 def hash_password(password: str) -> str:
     """Turns a plain text password into a secure hash."""
@@ -3286,7 +3387,8 @@ async def get_current_user(
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://deploy-inky-one-23.vercel.app/"
+    "https://deploy-inky-one-23.vercel.app/",
+    "https://deploy-3o2uwq154-aaron-kipfs-projects.vercel.app"
 ]
 
 app.add_middleware(
@@ -3721,13 +3823,18 @@ async def search_users(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Search users by name or handle for mentions."""
+    """Search users for mentions or board invitations, excluding self."""
     query = (
         select(models.User)
         .where(
-            (models.User.first_name.ilike(f"%{q}%")) | 
-            (models.User.last_name.ilike(f"%{q}%")) |
-            (models.User.handle.ilike(f"%{q}%"))
+            # 1. Search by name or handle
+            (
+                (models.User.first_name.ilike(f"%{q}%")) | 
+                (models.User.last_name.ilike(f"%{q}%")) |
+                (models.User.handle.ilike(f"%{q}%"))
+            ) & 
+            # 2. Don't include the person currently searching
+            (models.User.id != current_user.id)
         )
         .limit(5)
     )
@@ -3775,6 +3882,96 @@ async def archive_single_notification(
     await db.commit()
     
     return {"message": "Notification dismissed"}
+
+@app.post("/boards/{board_id}/invite")
+async def invite_to_board(
+    board_id: int,
+    invite_data: InvitationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Verify Board Ownership
+    board_query = await db.execute(select(models.Board).where(models.Board.id == board_id))
+    board = board_query.scalar_one_or_none()
+    
+    if not board or board.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the board owner can invite members")
+
+    # 2. Check if user is already a member
+    # (Assuming you have the board_members relationship or association table set up)
+    member_check = await db.execute(
+        select(models.User).join(models.board_members).where(
+            models.board_members.c.board_id == board_id,
+            models.board_members.c.user_id == invite_data.recipient_id
+        )
+    )
+    if member_check.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User is already a member of this board")
+
+    # 3. Create the Invitation Record
+    new_invite = models.BoardInvitation(
+        board_id=board_id,
+        sender_id=current_user.id,
+        recipient_id=invite_data.recipient_id,
+        status="pending"
+    )
+    db.add(new_invite)
+    
+    # 4. Create an In-App Notification
+    new_notif = models.Notification(
+        user_id=invite_data.recipient_id,
+        message=f"{current_user.first_name} invited you to join the board: {board.title}",
+        link=f"/boards/{board_id}" # We can use this to trigger the accept modal
+    )
+    db.add(new_notif)
+    
+    await db.commit()
+
+    # 5. Socket.io Real-time Alert
+    # This triggers the red dot on the recipient's bell icon instantly
+    await sio.emit("new_notification", {
+        "id": new_notif.id,
+        "message": new_notif.message,
+        "created_at": str(new_notif.created_at)
+    }, room=f"user_{invite_data.recipient_id}")
+
+    return {"message": "Invitation sent successfully"}
+
+@app.post("/boards/invitations/{invite_id}/accept")
+async def accept_invitation(
+    invite_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Find the pending invitation for the current user
+    query = select(models.BoardInvitation).where(
+        models.BoardInvitation.id == invite_id,
+        models.BoardInvitation.recipient_id == current_user.id,
+        models.BoardInvitation.status == "pending"
+    )
+    result = await db.execute(query)
+    invitation = result.scalar_one_or_none()
+
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found or already processed")
+
+    # 2. Get the board
+    board_query = await db.execute(select(models.Board).where(models.Board.id == invitation.board_id))
+    board = board_query.scalar_one_or_none()
+    
+    if not board:
+        raise HTTPException(status_code=404, detail="Board no longer exists")
+
+    # 3. Add user to board_members association table
+    # This assumes your Board model has: members = relationship("User", secondary=board_members...)
+    board.members.append(current_user)
+    
+    # 4. Update invitation status
+    invitation.status = "accepted"
+    
+    await db.commit()
+    
+    return {"message": "Successfully joined the board", "board_id": board.id}
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
@@ -3838,6 +4035,22 @@ class Board(Base):
     owner = relationship("User", back_populates="owned_boards")
     members = relationship("User", secondary=board_members, back_populates="shared_boards")
     cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
+
+class BoardInvitation(Base):
+    __tablename__ = "board_invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    recipient_id = Column(Integer, ForeignKey("users.id"))
+    # status can be: pending, accepted, declined
+    status = Column(String, default="pending") 
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships to make fetching easy
+    board = relationship("Board")
+    sender = relationship("User", foreign_keys=[sender_id])
+    recipient = relationship("User", foreign_keys=[recipient_id])
 
 class Card(Base):
     __tablename__ = "cards"
@@ -3991,3 +4204,6 @@ class NotificationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InvitationCreate(BaseModel):
+    recipient_id: int

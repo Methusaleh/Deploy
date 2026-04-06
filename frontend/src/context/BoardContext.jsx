@@ -13,6 +13,7 @@ const initialState = {
   cards: [],
   selectedCard: null,
   isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
+  userData: null,
 };
 
 function reducer(state, action) {
@@ -20,7 +21,7 @@ function reducer(state, action) {
     case "loading":
       return { ...state, status: "loading" };
     case "login":
-      return { ...state, isAuthenticated: true };
+      return { ...state, isAuthenticated: true, userData: action.payload };
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
@@ -62,8 +63,7 @@ function BoardProvider({ children }) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
-          // We'll update getBoards soon to stop using hardcoded '1'
-          const data = await getBoards(1);
+          const data = await getBoards(state.userData.id);
           dispatch({ type: "boardsLoaded", payload: data });
         } catch {
           dispatch({ type: "error" });
@@ -80,6 +80,17 @@ function BoardProvider({ children }) {
       console.log(`Requested to join room: ${state.activeBoard.id}`);
     }
   }, [state.activeBoard?.id]); // Runs every time the ID changes
+
+  // --- EFFECT: Join Private User Room for Notifications ---
+  useEffect(() => {
+    // We need the user ID to join the correct room
+    if (state.isAuthenticated && state.userData?.id) {
+      socket.emit("join_user_room", state.userData.id);
+      console.log(
+        `Joined private notification room: user_${state.userData.id}`,
+      );
+    }
+  }, [state.isAuthenticated, state.userData?.id]);
 
   useEffect(() => {
     // --- 1. UPDATE LISTENER ---
@@ -113,11 +124,20 @@ function BoardProvider({ children }) {
       }
     });
 
+    // 4. NEW: Listen for Invitations/Notifications
+    socket.on("new_notification", (notif) => {
+      console.log("New notification received!", notif);
+      // Here you can trigger a dispatch to update an 'unread' count
+      // or just let the UserMenu fetch the latest list.
+      // dispatch({ type: "addNotification", payload: notif });
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");
       socket.off("card_created");
+      socket.off("new_notification");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 
