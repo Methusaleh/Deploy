@@ -193,12 +193,10 @@ FILE: ./frontend/src\api\boards.js
 ==================================================
 import apiCLient from "./client";
 
-const API_URL = "http://localhost:8000";
-
 export const getBoards = async () => {
   const token = localStorage.getItem("token"); // Grab your saved token
 
-  const response = await fetch(`${API_URL}/boards/me`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/boards/me`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -220,20 +218,23 @@ export const getBoardCards = async (boardId) => {
 
 export const updateCard = async (cardId, cardData) => {
   const token = localStorage.getItem("token");
-  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const response = await fetch(
+    `${import.meta.env.VITE_API_URL}/cards/${cardId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(cardData),
     },
-    body: JSON.stringify(cardData),
-  });
+  );
   if (!response.ok) throw new Error("Failed to update card");
   return response.json();
 };
 
 export const createCard = async (cardData) => {
-  const response = await fetch(`http://localhost:8000/cards/`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/cards/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(cardData),
@@ -243,7 +244,7 @@ export const createCard = async (cardData) => {
 };
 
 export const deleteCard = async (cardId) => {
-  const response = await fetch(`http://localhost:8000/cards/${cardId}`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/${cardId}`, {
     method: "DELETE",
   });
   if (!response.ok) throw new Error("Failed to delete card");
@@ -253,12 +254,10 @@ export const deleteCard = async (cardId) => {
 ==================================================
 FILE: ./frontend/src\api\cards.js
 ==================================================
-const API_URL = "http://localhost:8000";
-
 export const getMyGlobalCards = async () => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/cards/me`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/cards/me`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -278,7 +277,7 @@ FILE: ./frontend/src\api\client.js
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: import.meta.env.VITE_API_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -291,7 +290,7 @@ FILE: ./frontend/src\api\socket.js
 ==================================================
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:8000", {
+const socket = io(import.meta.env.VITE_API_URL, {
   // Use 'websocket' first to avoid the polling CORS issues entirely
   transports: ["websocket"],
 });
@@ -327,7 +326,7 @@ const Auth = ({ onLoginSuccess }) => {
         params.append("username", formData.email);
         params.append("password", formData.password);
 
-        const response = await fetch("http://localhost:8000/token", {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/token`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: params,
@@ -342,11 +341,14 @@ const Auth = ({ onLoginSuccess }) => {
         onLoginSuccess();
       } else {
         // --- REGISTER LOGIC ---
-        const response = await fetch("http://localhost:8000/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        });
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/register`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          },
+        );
 
         if (!response.ok) throw new Error("Registration failed");
         setIsLogin(true); // Switch to login after success
@@ -1044,7 +1046,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
       try {
         const token = localStorage.getItem("token");
         const res = await fetch(
-          `http://localhost:8000/cards/${selectedCard.id}/comments`,
+          `${import.meta.env.VITE_API_URL}/cards/${selectedCard.id}/comments`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (res.ok) {
@@ -1073,7 +1075,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
       try {
         const token = localStorage.getItem("token");
         const res = await fetch(
-          `http://localhost:8000/users/search?q=${query}`,
+          `${import.meta.env.VITE_API_URL}/users/search?q=${query}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -1131,7 +1133,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:8000/cards/${selectedCard.id}/comments`,
+        `${import.meta.env.VITE_API_URL}/cards/${selectedCard.id}/comments`,
         {
           method: "POST",
           headers: {
@@ -1297,10 +1299,11 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           <div className={styles.commentFormWrapper}>
             {showSuggestions && (
               <div className={styles.suggestionList}>
-                {suggestions.map((user) => (
+                {suggestions.map((user, index) => (
                   <div
                     key={user.id}
-                    className={styles.suggestionItem}
+                    // Dynamically apply the active class based on selectedIndex
+                    className={`${styles.suggestionItem} ${index === selectedIndex ? styles.activeSuggestion : ""}`}
                     onClick={() => applyMention(user.handle)}
                   >
                     <span className={styles.suggestName}>
@@ -2360,18 +2363,24 @@ const UserMenu = ({ onLogout }) => {
         const token = localStorage.getItem("token");
         const headers = { Authorization: `Bearer ${token}` };
 
-        const userRes = await fetch("http://localhost:8000/users/me", {
-          headers,
-        });
+        const userRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/me`,
+          {
+            headers,
+          },
+        );
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
           socket.emit("join_user_room", user.id);
         }
 
-        const notifRes = await fetch("http://localhost:8000/notifications", {
-          headers,
-        });
+        const notifRes = await fetch(
+          `${import.meta.env.VITE_API_URL}/notifications`,
+          {
+            headers,
+          },
+        );
         if (notifRes.ok) {
           const notifs = await notifRes.json();
           setNotifications(notifs);
@@ -2395,10 +2404,13 @@ const UserMenu = ({ onLogout }) => {
   const clearAllNotifications = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/notifications/clear-all", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/notifications/clear-all`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (res.ok) {
         setNotifications([]); // Clear from UI instantly
@@ -2415,10 +2427,13 @@ const UserMenu = ({ onLogout }) => {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/notifications/read", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/notifications/read`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (res.ok) {
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -2447,7 +2462,7 @@ const UserMenu = ({ onLogout }) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:8000/notifications/${notifId}/archive`,
+        `${import.meta.env.VITE_API_URL}/notifications/${notifId}/archive`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
