@@ -570,7 +570,7 @@ async def archive_single_notification(
 @app.post("/boards/{board_id}/invite")
 async def invite_to_board(
     board_id: int,
-    invite_data: InvitationCreate,
+    invite_data: schemas.InvitationCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):

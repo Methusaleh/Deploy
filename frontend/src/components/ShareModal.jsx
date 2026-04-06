@@ -1,6 +1,6 @@
 // frontend/src/components/ShareModal.jsx
 import { useState, useEffect } from "react";
-import api from "../api/axios";
+import api from "../api/client";
 import UserAvatar from "./UserAvatar";
 import styles from "./ShareModal.module.css";
 
