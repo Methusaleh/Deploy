@@ -2,6 +2,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from typing import Optional
+import os
 
 # 1. Password Hashing Configuration
 # bcrypt is the industry standard for hashing passwords securely
@@ -9,9 +10,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 2. JWT Configuration
 # IMPORTANT: In a real production app, move these to an .env file!
-SECRET_KEY = "deploy_ultra_secret_key_2026" 
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440 # 24 hours
+SECRET_KEY = os.getenv("SECRET_KEY", "deploy_ultra_secret_key_2026") 
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 def hash_password(password: str) -> str:
     """Turns a plain text password into a secure hash."""
