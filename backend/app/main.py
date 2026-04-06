@@ -71,7 +71,8 @@ async def get_current_user(
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://deploy-inky-one-23.vercel.app/"
+    "https://deploy-inky-one-23.vercel.app/",
+    "https://deploy-3o2uwq154-aaron-kipfs-projects.vercel.app"
 ]
 
 app.add_middleware(
