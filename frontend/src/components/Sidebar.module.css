@@ -1,7 +1,9 @@
+/* frontend/src/components/Sidebar.module.css */
+
 .sidebar {
   display: flex;
   flex-direction: column;
-  justify-content: space-between; /* Pushes topSection and bottomSection apart */
+  justify-content: space-between;
   height: 100vh;
   padding: 1rem;
   background: var(--bg-secondary);
@@ -16,19 +18,57 @@
   margin-bottom: 2rem;
 }
 
+/* UPDATED: Changed to Flex to support the '+' button */
 .sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.5rem;
+  margin: 2rem 0 0.5rem 0; /* Adjusted margins for better alignment */
+}
+
+.sectionHeader span {
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  margin: 2rem 0 0.5rem 1rem; /* Space it out from the Logo */
   opacity: 0.6;
+}
+
+/* NEW: The creation button style */
+.addBoardBtn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  padding-bottom: 2px; /* Optical alignment for the '+' character */
+}
+
+.addBoardBtn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.05);
+  transform: scale(1.1);
 }
 
 .logo {
   cursor: pointer;
   transition: opacity 0.2s;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text-primary);
 }
 
 .logo:hover {
@@ -39,7 +79,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 2rem;
+  margin-top: 1rem; /* Reduced slightly since header has margin */
 }
 
 .navItem {
@@ -79,7 +119,7 @@
 }
 
 .logoutBtn:hover {
-  background: #ff4d4d22; /* Faint red glow */
+  background: #ff4d4d22;
   color: #ff4d4d;
   border-color: #ff4d4d;
 }

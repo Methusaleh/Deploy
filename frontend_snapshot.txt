@@ -117,64 +117,38 @@ createRoot(document.getElementById("root")).render(
 ==================================================
 FILE: ./frontend/src\api\boards.js
 ==================================================
-import apiCLient from "./client";
+// frontend/src/api/boards.js
+import apiClient from "./client"; // Notice I fixed the typo (apiCLient -> apiClient)
 
 export const getBoards = async () => {
-  const token = localStorage.getItem("token"); // Grab your saved token
-
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/boards/me`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`, // Send the token in the header
-    },
-  });
-
-  if (!response.ok) {
-    // If the token is expired or invalid, the backend returns 401
-    throw new Error("Failed to fetch boards");
-  }
-  return response.json();
+  const res = await apiClient.get("/boards/me");
+  return res.data;
 };
 
 export const getBoardCards = async (boardId) => {
-  const res = await apiCLient.get(`/boards/${boardId}/cards/`);
+  const res = await apiClient.get(`/boards/${boardId}/cards/`);
   return res.data;
 };
 
 export const updateCard = async (cardId, cardData) => {
-  const token = localStorage.getItem("token");
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/cards/${cardId}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(cardData),
-    },
-  );
-  if (!response.ok) throw new Error("Failed to update card");
-  return response.json();
+  const res = await apiClient.put(`/cards/${cardId}`, cardData);
+  return res.data;
 };
 
 export const createCard = async (cardData) => {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/cards/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cardData),
-  });
-  if (!response.ok) throw new Error("Failed to create card");
-  return response.json();
+  const res = await apiClient.post("/cards/", cardData);
+  return res.data;
 };
 
 export const deleteCard = async (cardId) => {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/${cardId}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) throw new Error("Failed to delete card");
-  return response.json();
+  const res = await apiClient.delete(`/cards/${cardId}`);
+  return res.data;
+};
+
+// --- NEW FUNCTION: Create a Board ---
+export const createBoard = async (title) => {
+  const res = await apiClient.post("/boards/", { title });
+  return res.data;
 };
 
 ==================================================
@@ -980,6 +954,87 @@ FILE: ./frontend/src\components\Column.module.css
   border-radius: 8px;
   outline: 2px dashed rgba(255, 255, 255, 0.1);
 }
+
+==================================================
+FILE: ./frontend/src\components\CreateBoardModal.jsx
+==================================================
+// frontend/src/components/CreateBoardModal.jsx
+import React, { useState } from "react";
+import api from "../api/client";
+import styles from "./ShareModal.module.css"; // We can reuse your existing modal styles!
+
+const CreateBoardModal = ({ onClose }) => {
+  const [title, setTitle] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      await api.post("/boards/", { title });
+
+      // We force the context to reload the sidebar so the new board appears
+      // (Assuming you have a way to refresh boards, or we just reload the page for V1)
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to create board:", err);
+      setError("Failed to create board. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2>Create New Board</h2>
+          <button className={styles.closeBtn} onClick={onClose}>
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className={styles.modalBody}>
+          <div className={styles.inputGroup}>
+            <label>Board Title</label>
+            <input
+              type="text"
+              placeholder="e.g. Q3 Launch, Bug Tracker..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          {error && <p className={styles.errorMessage}>{error}</p>}
+
+          <div className={styles.modalActions}>
+            <button
+              type="button"
+              className={styles.cancelBtn}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={styles.submitBtn}
+              disabled={isSubmitting || !title.trim()}
+            >
+              {isSubmitting ? "Creating..." : "Create Board"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default CreateBoardModal;
 
 ==================================================
 FILE: ./frontend/src\components\Drawer.jsx
@@ -2553,38 +2608,56 @@ FILE: ./frontend/src\components\ShareModal.module.css
 ==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
+import { useState } from "react"; // Added missing import
 import { useBoards } from "../context/BoardContext";
+import CreateBoardModal from "./CreateBoardModal";
 import styles from "./Sidebar.module.css";
 
 function Sidebar() {
   const { boards, activeBoard, dispatch } = useBoards();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.topSection}>
-        <h1
-          className={styles.logo}
-          onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
-        >
-          Deploy
-        </h1>
+    <>
+      <aside className={styles.sidebar}>
+        <div className={styles.topSection}>
+          <h1
+            className={styles.logo}
+            onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
+          >
+            Deploy
+          </h1>
 
-        <div className={styles.sectionHeader}>My Boards</div>
-        <nav className={styles.nav}>
-          {boards.map((board) => (
+          <div className={styles.sectionHeader}>
+            <span>My Boards</span>
             <button
-              key={board.id}
-              className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
-              onClick={() =>
-                dispatch({ type: "setActiveBoard", payload: board })
-              }
+              onClick={() => setIsCreateModalOpen(true)}
+              className="add-board-btn"
             >
-              {board.title}
+              +
             </button>
-          ))}
-        </nav>
-      </div>
-    </aside>
+          </div>
+          <nav className={styles.nav}>
+            {boards.map((board) => (
+              <button
+                key={board.id}
+                className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
+                onClick={() =>
+                  dispatch({ type: "setActiveBoard", payload: board })
+                }
+              >
+                {board.title}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </aside>
+
+      {/* Render the modal outside the aside to prevent CSS clipping */}
+      {isCreateModalOpen && (
+        <CreateBoardModal onClose={() => setIsCreateModalOpen(false)} />
+      )}
+    </>
   );
 }
 
@@ -2941,6 +3014,24 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
+  const handleDeclineInvite = async (e, notifId) => {
+    e.stopPropagation(); // Prevents clicking the button from triggering the card teleport
+    try {
+      // We use the same 'api' instance and follow the notifId pattern
+      const res = await api.post(`/boards/invitations/${notifId}/decline`);
+
+      if (res.status === 200) {
+        console.log("Invitation declined.");
+
+        // Filter it out of the UI immediately just like the acceptance flow
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }
+    } catch (err) {
+      console.error("Failed to decline invite:", err);
+      alert(err.response?.data?.detail || "Failed to decline invitation.");
+    }
+  };
+
   // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
@@ -2997,14 +3088,21 @@ const UserMenu = ({ onLogout }) => {
                     <div className={styles.notifContent}>
                       <p>{n.message}</p>
 
-                      {/* NEW: Accept Invitation Button */}
                       {n.type === "invite" && (
-                        <button
-                          className={styles.acceptInviteBtn}
-                          onClick={(e) => handleAcceptInvite(e, n.id)}
-                        >
-                          Accept Invitation
-                        </button>
+                        <div className={styles.notifActions}>
+                          <button
+                            className={styles.acceptInviteBtn}
+                            onClick={(e) => handleAcceptInvite(e, n.id)}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            className={styles.declineInviteBtn}
+                            onClick={(e) => handleDeclineInvite(e, n.id)}
+                          >
+                            Decline
+                          </button>
+                        </div>
                       )}
 
                       <span className={styles.timeAgo}>
@@ -3079,7 +3177,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
   z-index: 2000;
   display: flex;
   align-items: center;
-  gap: 20px; /* Space between Bell and Avatar */
+  gap: 20px;
 }
 
 .avatarWrapper {
@@ -3088,17 +3186,12 @@ FILE: ./frontend/src\components\UserMenu.module.css
   justify-content: center;
   cursor: pointer;
   border-radius: 50%;
-
-  /* This creates the glow effect around the component */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-
-  /* We add a small offset so the scale effect doesn't jitter */
   border: 2px solid transparent;
 }
 
 .avatarWrapper:hover {
-  /* This adds that nice cyan ring around your UserAvatar component on hover */
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
   transform: scale(1.05);
@@ -3108,7 +3201,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
   position: absolute;
   top: 60px;
   right: 0;
-  background: #111; /* Darker background for higher contrast */
+  background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   width: 200px;
@@ -3170,7 +3263,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
   position: absolute;
   top: -5px;
   right: -5px;
-  background: #ff007f; /* Magenta */
+  background: #ff007f;
   color: white;
   font-size: 10px;
   font-weight: bold;
@@ -3180,11 +3273,10 @@ FILE: ./frontend/src\components\UserMenu.module.css
   box-shadow: 0 0 10px rgba(255, 0, 127, 0.5);
 }
 
-/* INBOX DROPDOWN */
 .inboxDropdown {
   position: absolute;
   top: 55px;
-  right: -60px; /* Offset to center under bell */
+  right: -60px;
   background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -3228,7 +3320,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
 .notificationItem {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* Keeps the 'X' at the top for multi-line messages */
+  align-items: flex-start;
   padding: 15px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
@@ -3240,11 +3332,6 @@ FILE: ./frontend/src\components\UserMenu.module.css
   background: rgba(255, 255, 255, 0.03);
 }
 
-.notificationItem[data-unread="true"] {
-  border-left: 3px solid var(--accent-cyan);
-  background: rgba(0, 245, 255, 0.02);
-}
-
 .notificationItem p {
   margin: 0;
   font-size: 0.85rem;
@@ -3252,36 +3339,54 @@ FILE: ./frontend/src\components\UserMenu.module.css
   color: var(--text-secondary);
 }
 
-.notifText {
-  flex: 1;
-  font-size: 0.9rem;
+/* --- NEW BUTTON GROUP STYLING --- */
+.notifActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.acceptInviteBtn {
-  margin-top: 8px;
-  background: var(--accent-cyan);
-  color: #000;
+.acceptInviteBtn,
+.declineInviteBtn {
+  flex: 1;
   border: none;
-  padding: 6px 12px;
+  padding: 8px 0;
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 700;
   cursor: pointer;
   text-transform: uppercase;
-  transition: all 0.2s;
-  display: block; /* Ensures it sits on its own line under the message */
-  width: fit-content;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.acceptInviteBtn {
+  background: var(--accent-cyan);
+  color: #000;
+}
+
+.declineInviteBtn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .acceptInviteBtn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.2);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 245, 255, 0.2);
+}
+
+.declineInviteBtn:hover {
+  background: rgba(255, 77, 77, 0.1);
+  color: #ff4d4d;
+  border-color: #ff4d4d;
 }
 
 .dismissBtn {
   background: none;
   border: none;
-  color: #444; /* Subtle until hover */
+  color: #444;
   font-size: 1.2rem;
   line-height: 1;
   padding: 0 5px;
@@ -3292,14 +3397,14 @@ FILE: ./frontend/src\components\UserMenu.module.css
 }
 
 .dismissBtn:hover {
-  color: #ff4444; /* Neon red warning */
+  color: #ff4444;
   opacity: 1;
   transform: scale(1.2);
 }
 
 .timeAgo {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 0.7rem;
   color: #555;
 }
@@ -3313,12 +3418,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
 
 .divider {
   height: 1px;
-  background: rgba(
-    255,
-    255,
-    255,
-    0.05
-  ); /* Subtle border matching our new style */
+  background: rgba(255, 255, 255, 0.05);
   margin: 12px 0;
 }
 
@@ -3327,7 +3427,7 @@ FILE: ./frontend/src\components\UserMenu.module.css
   padding: 10px 12px;
   background: transparent;
   border: none;
-  color: #ff4d4d; /* Danger Red */
+  color: #ff4d4d;
   text-align: left;
   cursor: pointer;
   border-radius: 6px;
