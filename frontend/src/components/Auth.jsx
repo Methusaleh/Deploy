@@ -19,7 +19,7 @@ const Auth = ({ onLoginSuccess }) => {
 
     try {
       if (isLogin) {
-        // --- LOGIN LOGIC ---
+        // --- 1. LOGIN LOGIC ---
         const params = new URLSearchParams();
         params.append("username", formData.email);
         params.append("password", formData.password);
@@ -33,9 +33,25 @@ const Auth = ({ onLoginSuccess }) => {
         if (!response.ok) throw new Error("Invalid email or password");
 
         const data = await response.json();
-        // Save the token to local storage
-        localStorage.setItem("token", data.access_token);
-        dispatch({ type: "login" });
+        const token = data.access_token;
+        localStorage.setItem("token", token);
+
+        // --- 2. FETCH USER PROFILE ---
+        // This is the critical step to get the user's ID for the context
+        const userResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/me`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+
+        if (!userResponse.ok) throw new Error("Failed to fetch user profile");
+
+        const userData = await userResponse.json();
+
+        // --- 3. DISPATCH TO CONTEXT ---
+        // Pass the userData as the payload so BoardContext can load boards
+        dispatch({ type: "login", payload: userData });
         onLoginSuccess();
       } else {
         // --- REGISTER LOGIC ---
@@ -49,7 +65,7 @@ const Auth = ({ onLoginSuccess }) => {
         );
 
         if (!response.ok) throw new Error("Registration failed");
-        setIsLogin(true); // Switch to login after success
+        setIsLogin(true);
       }
     } catch (err) {
       setError(err.message);
