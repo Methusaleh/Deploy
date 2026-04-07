@@ -183,6 +183,24 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
+  const handleDeclineInvite = async (e, notifId) => {
+    e.stopPropagation(); // Prevents clicking the button from triggering the card teleport
+    try {
+      // We use the same 'api' instance and follow the notifId pattern
+      const res = await api.post(`/boards/invitations/${notifId}/decline`);
+
+      if (res.status === 200) {
+        console.log("Invitation declined.");
+
+        // Filter it out of the UI immediately just like the acceptance flow
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }
+    } catch (err) {
+      console.error("Failed to decline invite:", err);
+      alert(err.response?.data?.detail || "Failed to decline invitation.");
+    }
+  };
+
   // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
@@ -239,14 +257,21 @@ const UserMenu = ({ onLogout }) => {
                     <div className={styles.notifContent}>
                       <p>{n.message}</p>
 
-                      {/* NEW: Accept Invitation Button */}
                       {n.type === "invite" && (
-                        <button
-                          className={styles.acceptInviteBtn}
-                          onClick={(e) => handleAcceptInvite(e, n.id)}
-                        >
-                          Accept Invitation
-                        </button>
+                        <div className={styles.notifActions}>
+                          <button
+                            className={styles.acceptInviteBtn}
+                            onClick={(e) => handleAcceptInvite(e, n.id)}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            className={styles.declineInviteBtn}
+                            onClick={(e) => handleDeclineInvite(e, n.id)}
+                          >
+                            Decline
+                          </button>
+                        </div>
                       )}
 
                       <span className={styles.timeAgo}>

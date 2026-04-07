@@ -696,3 +696,37 @@ async def accept_invitation(
         await db.rollback()
         print(f"Accept Error: {e}")
         raise HTTPException(status_code=500, detail="Database error during acceptance")
+    
+@app.post("/boards/invitations/{notif_id}/decline")
+async def decline_invitation(
+    notif_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Verify the notification exists
+    notif_query = await db.execute(select(models.Notification).where(models.Notification.id == notif_id))
+    notification = notif_query.scalar_one_or_none()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    # 2. Find the most recent pending invitation for this user
+    invite_query = select(models.BoardInvitation).where(
+        models.BoardInvitation.recipient_id == current_user.id,
+        models.BoardInvitation.status == "pending"
+    ).order_by(models.BoardInvitation.created_at.desc())
+    
+    result = await db.execute(invite_query)
+    invitation = result.scalars().first()
+
+    if not invitation:
+        raise HTTPException(status_code=404, detail="No pending invitation found")
+
+    # 3. Update status to declined and archive the notification
+    invitation.status = "declined"
+    notification.is_archived = True
+    notification.is_read = True
+    
+    await db.commit()
+    
+    return {"message": "Invitation declined"}

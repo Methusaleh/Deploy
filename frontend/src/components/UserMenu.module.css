@@ -5,7 +5,7 @@
   z-index: 2000;
   display: flex;
   align-items: center;
-  gap: 20px; /* Space between Bell and Avatar */
+  gap: 20px;
 }
 
 .avatarWrapper {
@@ -14,17 +14,12 @@
   justify-content: center;
   cursor: pointer;
   border-radius: 50%;
-
-  /* This creates the glow effect around the component */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-
-  /* We add a small offset so the scale effect doesn't jitter */
   border: 2px solid transparent;
 }
 
 .avatarWrapper:hover {
-  /* This adds that nice cyan ring around your UserAvatar component on hover */
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
   transform: scale(1.05);
@@ -34,7 +29,7 @@
   position: absolute;
   top: 60px;
   right: 0;
-  background: #111; /* Darker background for higher contrast */
+  background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   width: 200px;
@@ -96,7 +91,7 @@
   position: absolute;
   top: -5px;
   right: -5px;
-  background: #ff007f; /* Magenta */
+  background: #ff007f;
   color: white;
   font-size: 10px;
   font-weight: bold;
@@ -106,11 +101,10 @@
   box-shadow: 0 0 10px rgba(255, 0, 127, 0.5);
 }
 
-/* INBOX DROPDOWN */
 .inboxDropdown {
   position: absolute;
   top: 55px;
-  right: -60px; /* Offset to center under bell */
+  right: -60px;
   background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -154,7 +148,7 @@
 .notificationItem {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* Keeps the 'X' at the top for multi-line messages */
+  align-items: flex-start;
   padding: 15px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
@@ -166,11 +160,6 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-.notificationItem[data-unread="true"] {
-  border-left: 3px solid var(--accent-cyan);
-  background: rgba(0, 245, 255, 0.02);
-}
-
 .notificationItem p {
   margin: 0;
   font-size: 0.85rem;
@@ -178,36 +167,54 @@
   color: var(--text-secondary);
 }
 
-.notifText {
-  flex: 1;
-  font-size: 0.9rem;
+/* --- NEW BUTTON GROUP STYLING --- */
+.notifActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.acceptInviteBtn {
-  margin-top: 8px;
-  background: var(--accent-cyan);
-  color: #000;
+.acceptInviteBtn,
+.declineInviteBtn {
+  flex: 1;
   border: none;
-  padding: 6px 12px;
+  padding: 8px 0;
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 700;
   cursor: pointer;
   text-transform: uppercase;
-  transition: all 0.2s;
-  display: block; /* Ensures it sits on its own line under the message */
-  width: fit-content;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.acceptInviteBtn {
+  background: var(--accent-cyan);
+  color: #000;
+}
+
+.declineInviteBtn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .acceptInviteBtn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.2);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 245, 255, 0.2);
+}
+
+.declineInviteBtn:hover {
+  background: rgba(255, 77, 77, 0.1);
+  color: #ff4d4d;
+  border-color: #ff4d4d;
 }
 
 .dismissBtn {
   background: none;
   border: none;
-  color: #444; /* Subtle until hover */
+  color: #444;
   font-size: 1.2rem;
   line-height: 1;
   padding: 0 5px;
@@ -218,14 +225,14 @@
 }
 
 .dismissBtn:hover {
-  color: #ff4444; /* Neon red warning */
+  color: #ff4444;
   opacity: 1;
   transform: scale(1.2);
 }
 
 .timeAgo {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 0.7rem;
   color: #555;
 }
@@ -239,12 +246,7 @@
 
 .divider {
   height: 1px;
-  background: rgba(
-    255,
-    255,
-    255,
-    0.05
-  ); /* Subtle border matching our new style */
+  background: rgba(255, 255, 255, 0.05);
   margin: 12px 0;
 }
 
@@ -253,7 +255,7 @@
   padding: 10px 12px;
   background: transparent;
   border: none;
-  color: #ff4d4d; /* Danger Red */
+  color: #ff4d4d;
   text-align: left;
   cursor: pointer;
   border-radius: 6px;

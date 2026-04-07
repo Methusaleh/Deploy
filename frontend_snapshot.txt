@@ -2759,6 +2759,7 @@ FILE: ./frontend/src\components\UserMenu.jsx
 // frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
+import api from "../api/client";
 import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
 import UserAvatar from "./UserAvatar";
 import styles from "./UserMenu.module.css";
@@ -2771,6 +2772,7 @@ const UserMenu = ({ onLogout }) => {
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [userData, setUserData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const menuRef = useRef(null);
 
   // 1. INITIALIZATION: Fetch User Profile and Notifications
@@ -2778,7 +2780,10 @@ const UserMenu = ({ onLogout }) => {
     const initUserMenu = async () => {
       try {
         const token = localStorage.getItem("token");
-        if (!token) return; // Guard clause if token is missing
+        if (!token) {
+          setIsLoading(false);
+          return; // Guard clause if token is missing
+        }
 
         const headers = { Authorization: `Bearer ${token}` };
 
@@ -2812,6 +2817,8 @@ const UserMenu = ({ onLogout }) => {
         }
       } catch (err) {
         console.error("UserMenu Init Error:", err);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -2911,28 +2918,26 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
-  const handleAcceptInvite = async (e, inviteId) => {
-    e.stopPropagation(); // Don't trigger the 'teleport to card' logic
+  const handleAcceptInvite = async (e, notifId) => {
+    e.stopPropagation(); // Prevents clicking the button from triggering the background notification click
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/boards/invitations/${inviteId}/accept`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      // We use the 'api' instance which already has the Base URL and the Token interceptor
+      const res = await api.post(`/boards/invitations/${notifId}/accept`);
 
-      if (res.ok) {
-        // 1. Tell the user it worked
+      if (res.status === 200) {
         console.log("Joined board successfully!");
-        // 2. Remove the notification from the list
-        setNotifications((prev) => prev.filter((n) => n.id !== inviteId));
-        // 3. Refresh the sidebar boards
+
+        // Remove the notification from the tray immediately
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+
+        // Refresh to populate the new board in the sidebar
         window.location.reload();
       }
     } catch (err) {
       console.error("Failed to accept invite:", err);
+      // This will now show the actual error from your FastAPI 'detail' field
+      const errorMsg = err.response?.data?.detail || "Failed to join board.";
+      alert(errorMsg);
     }
   };
 
@@ -2956,6 +2961,8 @@ const UserMenu = ({ onLogout }) => {
   }, []);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  if (isLoading) return null;
 
   return (
     <div className={styles.userMenuContainer} ref={menuRef}>
@@ -3037,9 +3044,7 @@ const UserMenu = ({ onLogout }) => {
         }}
       >
         <UserAvatar
-          name={
-            userData ? `${userData.first_name} ${userData.last_name}` : "Aaron"
-          }
+          name={`${userData.first_name} ${userData.last_name}`}
           size={36}
         />
       </div>
@@ -3048,9 +3053,7 @@ const UserMenu = ({ onLogout }) => {
         <div className={styles.dropdown}>
           <div className={styles.userInfo}>
             <p className={styles.userName}>
-              {userData
-                ? `${userData.first_name} ${userData.last_name}`
-                : "Aaron"}
+              {`${userData.first_name} ${userData.last_name}`}
             </p>
             <p className={styles.userRole}>Lead Developer</p>
           </div>
