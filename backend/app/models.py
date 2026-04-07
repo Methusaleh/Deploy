@@ -3,18 +3,17 @@ from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
 
-# 1. Define the Base class here instead of importing it
-# This is the modern SQLAlchemy 2.0 way.
+# 1. Define the Base class (SQLAlchemy 2.0 style)
 class Base(DeclarativeBase):
     pass
 
 # --- 2. ASSOCIATION TABLE ---
-# This links users to boards they have been invited to.
+# Links users to boards they have been invited to.
 board_members = Table(
     "board_members",
     Base.metadata,
-    Column("user_id", ForeignKey("users.id"), primary_key=True),
-    Column("board_id", ForeignKey("boards.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("board_id", ForeignKey("boards.id", ondelete="CASCADE"), primary_key=True),
 )
 
 class User(Base):
@@ -23,15 +22,12 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True) 
-    
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
-
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     handle = Column(String, unique=True, index=True, nullable=False)
     bio = Column(Text, nullable=True)
-    
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -52,7 +48,7 @@ class Board(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
     # Relationships
     owner = relationship("User", back_populates="owned_boards")
@@ -66,11 +62,10 @@ class BoardInvitation(Base):
     board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
     sender_id = Column(Integer, ForeignKey("users.id"))
     recipient_id = Column(Integer, ForeignKey("users.id"))
-    # status can be: pending, accepted, declined
-    status = Column(String, default="pending") 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="pending") # pending, accepted, declined
+    created_at = Column(DateTime, default=func.now())
 
-    # Relationships to make fetching easy
+    # Relationships
     board = relationship("Board")
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
@@ -83,13 +78,11 @@ class Card(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
     priority = Column(String, default="low")
-    
-    # Time-tracking fields for Dashboard/Stale logic
     due_date = Column(DateTime(timezone=True), nullable=True)
     last_moved_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
     
-    board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")
 
 class Comment(Base):
@@ -97,24 +90,19 @@ class Comment(Base):
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
     card_id = Column(Integer, ForeignKey("cards.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     
-    # Back-references
     author = relationship("User")
 
 class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(String) # e.g., "mention", "status_change", "assignment"
+    # This matches your requirement for "mention", "invite", etc.
+    type = Column(String, nullable=True) 
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)
     is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Who receives the notification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    # Link to the specific card so clicking the notification opens it
     card_id = Column(Integer, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)

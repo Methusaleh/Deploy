@@ -276,14 +276,20 @@ FILE: ./frontend/src\api\client.js
 ==================================================
 import axios from "axios";
 
-const apiClient = axios.create({
+const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
-export default apiClient;
+// This interceptor is CRITICAL. It runs before every single request.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
 
 ==================================================
 FILE: ./frontend/src\api\socket.js
@@ -321,7 +327,7 @@ const Auth = ({ onLoginSuccess }) => {
 
     try {
       if (isLogin) {
-        // --- LOGIN LOGIC ---
+        // --- 1. LOGIN LOGIC ---
         const params = new URLSearchParams();
         params.append("username", formData.email);
         params.append("password", formData.password);
@@ -335,9 +341,25 @@ const Auth = ({ onLoginSuccess }) => {
         if (!response.ok) throw new Error("Invalid email or password");
 
         const data = await response.json();
-        // Save the token to local storage
-        localStorage.setItem("token", data.access_token);
-        dispatch({ type: "login" });
+        const token = data.access_token;
+        localStorage.setItem("token", token);
+
+        // --- 2. FETCH USER PROFILE ---
+        // This is the critical step to get the user's ID for the context
+        const userResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/me`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+
+        if (!userResponse.ok) throw new Error("Failed to fetch user profile");
+
+        const userData = await userResponse.json();
+
+        // --- 3. DISPATCH TO CONTEXT ---
+        // Pass the userData as the payload so BoardContext can load boards
+        dispatch({ type: "login", payload: userData });
         onLoginSuccess();
       } else {
         // --- REGISTER LOGIC ---
@@ -351,7 +373,7 @@ const Auth = ({ onLoginSuccess }) => {
         );
 
         if (!response.ok) throw new Error("Registration failed");
-        setIsLogin(true); // Switch to login after success
+        setIsLogin(true);
       }
     } catch (err) {
       setError(err.message);
@@ -584,9 +606,8 @@ function Board() {
                 <span className="material-icons">person_add</span>
                 <span>Share</span>
               </button>
+              <div className={styles.totalCount}>{cards.length} Cards</div>
             </div>
-
-            <div className={styles.totalCount}>{cards.length} Cards</div>
           </div>
         </header>
 
@@ -639,6 +660,7 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .header h1 {
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -647,14 +669,15 @@ FILE: ./frontend/src\components\Board.module.css
 .headerMain {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Changed from space-between to keep the group away from the User Menu on the right */
+  justify-content: flex-start;
   width: 100%;
 }
 
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.5rem; /* Consistent breathing room between elements */
 }
 
 .shareBtn {
@@ -685,12 +708,14 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .totalCount {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   background-color: rgba(255, 255, 255, 0.05);
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 6px; /* Matches button radius for a more consistent UI */
   border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .grid {
@@ -2266,13 +2291,14 @@ FILE: ./frontend/src\components\ShareModal.jsx
 ==================================================
 // frontend/src/components/ShareModal.jsx
 import { useState, useEffect } from "react";
-import api from "../api/axios";
+import api from "../api/client";
 import UserAvatar from "./UserAvatar";
 import styles from "./ShareModal.module.css";
 
 const ShareModal = ({ boardId, onClose }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -2290,13 +2316,30 @@ const ShareModal = ({ boardId, onClose }) => {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const sendInvite = async (userId) => {
+  const toggleUserSelection = (user) => {
+    if (selectedUsers.find((u) => u.id === user.id)) {
+      setSelectedUsers(selectedUsers.filter((u) => u.id !== user.id));
+    } else {
+      setSelectedUsers([...selectedUsers, user]);
+    }
+  };
+
+  const sendAllInvites = async () => {
     try {
-      await api.post(`/boards/${boardId}/invite`, { recipient_id: userId });
-      alert("Invitation sent!");
+      // Loop through selected users and send invites
+      const promises = selectedUsers.map((user) =>
+        api.post(`/boards/${boardId}/invite`, { recipient_id: user.id }),
+      );
+
+      await Promise.all(promises);
+      console.log(`Sent ${selectedUsers.length} invitations!`);
       onClose();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error sending invitation");
+      // Access the detailed error message from the backend response
+      const errorMessage =
+        err.response?.data?.detail || "Some invitations failed to send.";
+      console.error("Invite Error:", err);
+      alert(errorMessage);
     }
   };
 
@@ -2304,20 +2347,30 @@ const ShareModal = ({ boardId, onClose }) => {
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <h3>Collaborators</h3>
+
+        {/* Selected Users "Chips" Area */}
+        <div className={styles.stagingArea}>
+          {selectedUsers.map((user) => (
+            <div key={user.id} className={styles.userChip}>
+              {user.first_name}
+              <span onClick={() => toggleUserSelection(user)}>×</span>
+            </div>
+          ))}
+        </div>
+
         <input
           className={styles.searchInput}
-          type="text"
-          placeholder="Search by name or handle..."
+          placeholder="Search users..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
         />
+
         <div className={styles.resultsList}>
           {results.map((user) => (
             <div
               key={user.id}
-              className={styles.userRow}
-              onClick={() => sendInvite(user.id)}
+              className={`${styles.userRow} ${selectedUsers.find((u) => u.id === user.id) ? styles.selected : ""}`}
+              onClick={() => toggleUserSelection(user)}
             >
               <UserAvatar
                 name={`${user.first_name} ${user.last_name}`}
@@ -2327,19 +2380,30 @@ const ShareModal = ({ boardId, onClose }) => {
                 <span>
                   {user.first_name} {user.last_name}
                 </span>
-                <small>@{user.handle}</small>
+                {/* Fix: Only show @ if the handle doesn't already have it */}
+                <small>
+                  {user.handle.startsWith("@")
+                    ? user.handle
+                    : `@${user.handle}`}
+                </small>
               </div>
-              <button className={styles.inviteBtn}>Invite</button>
+              <div className={styles.checkbox}>
+                {selectedUsers.find((u) => u.id === user.id)
+                  ? "check_circle"
+                  : "add_circle"}
+              </div>
             </div>
           ))}
-          {query.length > 1 && results.length === 0 && (
-            <p
-              style={{ color: "#555", fontSize: "0.8rem", textAlign: "center" }}
-            >
-              No users found
-            </p>
-          )}
         </div>
+
+        <button
+          className={styles.mainInviteBtn}
+          disabled={selectedUsers.length === 0}
+          onClick={sendAllInvites}
+        >
+          Send {selectedUsers.length} Invitation
+          {selectedUsers.length !== 1 ? "s" : ""}
+        </button>
       </div>
     </div>
   );
@@ -2351,6 +2415,7 @@ export default ShareModal;
 FILE: ./frontend/src\components\ShareModal.module.css
 ==================================================
 /* frontend/src/components/ShareModal.module.css */
+
 .modalOverlay {
   position: fixed;
   top: 0;
@@ -2369,55 +2434,125 @@ FILE: ./frontend/src\components\ShareModal.module.css
   background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  width: 400px;
-  padding: 20px;
+  width: 440px; /* Slightly wider to accommodate the new layout */
+  padding: 24px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
 }
 
 .modalContent h3 {
   margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 1.1rem;
+  margin-bottom: 20px;
+  font-size: 1rem;
   color: var(--accent-cyan);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
 }
 
+/* --- STAGING AREA (Chip Container) --- */
+.stagingArea {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  min-height: 32px; /* Prevents layout jump when first user is added */
+}
+
+.userChip {
+  background: rgba(0, 245, 255, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.userChip span {
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--text-primary);
+  opacity: 0.6;
+}
+
+.userChip span:hover {
+  opacity: 1;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- INPUT --- */
 .searchInput {
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: #1a1a1a;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   color: white;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
   outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
 }
 
 .searchInput:focus {
   border-color: var(--accent-cyan);
 }
 
+/* --- RESULTS LIST --- */
 .resultsList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 250px;
+  gap: 4px;
+  max-height: 280px;
   overflow-y: auto;
+  padding-right: 4px;
+}
+
+.resultsList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.resultsList::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
 }
 
 .userRow {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
+  padding: 10px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .userRow:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* Highlight state for users already in the staging list */
+.userRow.selected {
+  background: rgba(0, 245, 255, 0.05);
+  border-color: rgba(0, 245, 255, 0.2);
 }
 
 .userDetails {
@@ -2437,20 +2572,56 @@ FILE: ./frontend/src\components\ShareModal.module.css
   color: var(--text-secondary);
 }
 
-.inviteBtn {
-  background: transparent;
-  border: 1px solid var(--accent-cyan);
-  color: var(--accent-cyan);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
+/* Icon indicator on the right of the row */
+.checkbox {
+  color: var(--text-secondary);
+  font-family: "Material Icons";
+  font-size: 20px;
 }
 
-.inviteBtn:hover {
+.userRow.selected .checkbox {
+  color: var(--accent-cyan);
+}
+
+/* --- MAIN ACTION BUTTON --- */
+.mainInviteBtn {
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px;
   background: var(--accent-cyan);
-  color: black;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mainInviteBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 245, 255, 0.3);
+}
+
+.mainInviteBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.mainInviteBtn:disabled {
+  background: #222;
+  color: #555;
+  cursor: not_allowed;
+  border: 1px solid var(--border-subtle);
+}
+
+.noResults {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-align: center;
+  margin: 20px 0;
 }
 
 ==================================================
@@ -2681,26 +2852,34 @@ const UserMenu = ({ onLogout }) => {
     const initUserMenu = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) return; // Guard clause if token is missing
+
         const headers = { Authorization: `Bearer ${token}` };
 
+        // 1. Fetch User Profile
         const userRes = await fetch(
           `${import.meta.env.VITE_API_URL}/users/me`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
+
+          // --- THE FIX ---
+          // Synchronize this user data with the global BoardContext
+          // This triggers the sidebar fetch in BoardContext.jsx
+          dispatch({ type: "login", payload: user });
+
           socket.emit("join_user_room", user.id);
         }
 
+        // 2. Fetch Notifications
         const notifRes = await fetch(
           `${import.meta.env.VITE_API_URL}/notifications`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (notifRes.ok) {
           const notifs = await notifRes.json();
           setNotifications(notifs);
@@ -2709,16 +2888,25 @@ const UserMenu = ({ onLogout }) => {
         console.error("UserMenu Init Error:", err);
       }
     };
+
     initUserMenu();
-  }, []);
+  }, [dispatch]); // Added dispatch here
 
   // 2. LIVE SOCKET LISTENER
   useEffect(() => {
-    socket.on("new_notification", (newNotif) => {
-      setNotifications((prev) => [newNotif, ...prev]);
+    // Listen for real-time notifications (invites, mentions, etc.)
+    socket.on("new_notification", (notif) => {
+      console.log("Real-time notification received:", notif);
+
+      // Update the local list so the red dot/dropdown updates immediately
+      setNotifications((prev) => [notif, ...prev]);
     });
-    return () => socket.off("new_notification");
-  }, []);
+
+    // Cleanup the listener when the component unmounts
+    return () => {
+      socket.off("new_notification");
+    };
+  }, [socket]); // Adding socket here ensures the listener stays fresh
 
   // 3. UPDATED: CLEAR ALL (ARCHIVE ALL)
   const clearAllNotifications = async () => {
@@ -2797,6 +2985,31 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
+  const handleAcceptInvite = async (e, inviteId) => {
+    e.stopPropagation(); // Don't trigger the 'teleport to card' logic
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/boards/invitations/${inviteId}/accept`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (res.ok) {
+        // 1. Tell the user it worked
+        console.log("Joined board successfully!");
+        // 2. Remove the notification from the list
+        setNotifications((prev) => prev.filter((n) => n.id !== inviteId));
+        // 3. Refresh the sidebar boards
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Failed to accept invite:", err);
+    }
+  };
+
   // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
@@ -2850,6 +3063,17 @@ const UserMenu = ({ onLogout }) => {
                   >
                     <div className={styles.notifContent}>
                       <p>{n.message}</p>
+
+                      {/* NEW: Accept Invitation Button */}
+                      {n.type === "invite" && (
+                        <button
+                          className={styles.acceptInviteBtn}
+                          onClick={(e) => handleAcceptInvite(e, n.id)}
+                        >
+                          Accept Invitation
+                        </button>
+                      )}
+
                       <span className={styles.timeAgo}>
                         {n.created_at
                           ? new Date(n.created_at).toLocaleTimeString([], {
@@ -2880,7 +3104,7 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
+        className={styles.avatarWrapper}
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
@@ -3104,6 +3328,27 @@ FILE: ./frontend/src\components\UserMenu.module.css
   font-size: 0.9rem;
 }
 
+.acceptInviteBtn {
+  margin-top: 8px;
+  background: var(--accent-cyan);
+  color: #000;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  display: block; /* Ensures it sits on its own line under the message */
+  width: fit-content;
+}
+
+.acceptInviteBtn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
 .dismissBtn {
   background: none;
   border: none;
@@ -3230,7 +3475,7 @@ function BoardProvider({ children }) {
 
   useEffect(() => {
     // Only fetch if we are actually logged in
-    if (state.isAuthenticated) {
+    if (state.isAuthenticated && state.userData?.id) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
@@ -3242,7 +3487,7 @@ function BoardProvider({ children }) {
       }
       loadBoards();
     }
-  }, [state.isAuthenticated]); // This trigger is the magic part
+  }, [state.isAuthenticated, state.userData?.id]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {
@@ -3560,23 +3805,22 @@ async def get_db():
 FILE: .\backend\app\main.py
 ==================================================
 import socketio
+import re
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer  
 from contextlib import asynccontextmanager
-from sqlalchemy import select
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from typing import List
 from datetime import datetime, timezone
-import re
 
 # Local App Imports
 from .database import engine, get_db
 from . import models, schemas, auth_utils, crud
 from .models import Base
-import app.auth_utils as auth_utils
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
@@ -3721,8 +3965,6 @@ async def login_for_access_token(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-import re # Make sure this is at the very top of main.py!
-
 @app.post("/register", response_model=schemas.UserResponse)
 async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     # 1. Check if email exists
@@ -3806,10 +4048,22 @@ async def get_my_boards(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
-    # This ensures users ONLY see boards where they are the owner
-    query = select(models.Board).where(models.Board.owner_id == current_user.id)
+    """
+    Fetches all boards where the user is either the Owner 
+    OR a Member (via the association table).
+    """
+    query = (
+        select(models.Board)
+        .outerjoin(models.board_members)
+        .where(
+            (models.Board.owner_id == current_user.id) | 
+            (models.board_members.c.user_id == current_user.id)
+        )
+    )
+    
     result = await db.execute(query)
-    return result.scalars().all()
+    # unique() is required when joining to prevent duplicate board objects in the result
+    return result.scalars().unique().all()
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -4069,16 +4323,19 @@ async def search_users(
     current_user: models.User = Depends(get_current_user)
 ):
     """Search users for mentions or board invitations, excluding self."""
+    # Clean the query: remove '@' if the user typed it, so we search the raw string
+    clean_q = q.replace("@", "").lower()
+    search_term = f"%{clean_q}%"
+
     query = (
         select(models.User)
         .where(
-            # 1. Search by name or handle
             (
-                (models.User.first_name.ilike(f"%{q}%")) | 
-                (models.User.last_name.ilike(f"%{q}%")) |
-                (models.User.handle.ilike(f"%{q}%"))
+                (models.User.first_name.ilike(search_term)) | 
+                (models.User.last_name.ilike(search_term)) |
+                (models.User.handle.ilike(search_term)) |
+                (models.User.email.ilike(search_term))
             ) & 
-            # 2. Don't include the person currently searching
             (models.User.id != current_user.id)
         )
         .limit(5)
@@ -4143,11 +4400,10 @@ async def invite_to_board(
         raise HTTPException(status_code=403, detail="Only the board owner can invite members")
 
     # 2. Check if user is already a member
-    # (Assuming you have the board_members relationship or association table set up)
     member_check = await db.execute(
-        select(models.User).join(models.board_members).where(
-            models.board_members.c.board_id == board_id,
-            models.board_members.c.user_id == invite_data.recipient_id
+        select(models.User).join(models.Board.members).where(
+            models.Board.id == board_id,
+            models.User.id == invite_data.recipient_id
         )
     )
     if member_check.scalar_one_or_none():
@@ -4162,61 +4418,85 @@ async def invite_to_board(
     )
     db.add(new_invite)
     
-    # 4. Create an In-App Notification
+    # 4. Create an In-App Notification 
+    # FIX: 'link' removed as it is not a valid column in your models.py
     new_notif = models.Notification(
         user_id=invite_data.recipient_id,
         message=f"{current_user.first_name} invited you to join the board: {board.title}",
-        link=f"/boards/{board_id}" # We can use this to trigger the accept modal
+        type="invite"
     )
     db.add(new_notif)
     
-    await db.commit()
+    try:
+        await db.commit()
+        await db.refresh(new_notif) # Refresh to get the generated ID and created_at
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create invitation")
 
     # 5. Socket.io Real-time Alert
-    # This triggers the red dot on the recipient's bell icon instantly
     await sio.emit("new_notification", {
         "id": new_notif.id,
         "message": new_notif.message,
-        "created_at": str(new_notif.created_at)
+        "created_at": str(new_notif.created_at),
+        "type": "invite" # Added type so frontend knows how to style it
     }, room=f"user_{invite_data.recipient_id}")
 
     return {"message": "Invitation sent successfully"}
 
-@app.post("/boards/invitations/{invite_id}/accept")
+@app.post("/boards/invitations/{notif_id}/accept")
 async def accept_invitation(
-    invite_id: int,
+    notif_id: int, 
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Find the pending invitation for the current user
-    query = select(models.BoardInvitation).where(
-        models.BoardInvitation.id == invite_id,
+    # 1. Find the Notification to confirm context
+    notif_query = await db.execute(
+        select(models.Notification).where(models.Notification.id == notif_id)
+    )
+    notification = notif_query.scalar_one_or_none()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    # 2. Find the pending invitation for this user
+    # We look for the most recent pending invite for the recipient
+    invite_query = select(models.BoardInvitation).where(
         models.BoardInvitation.recipient_id == current_user.id,
         models.BoardInvitation.status == "pending"
-    )
-    result = await db.execute(query)
-    invitation = result.scalar_one_or_none()
+    ).order_by(models.BoardInvitation.created_at.desc())
+    
+    result = await db.execute(invite_query)
+    invitation = result.scalars().first()
 
     if not invitation:
-        raise HTTPException(status_code=404, detail="Invitation not found or already processed")
+        raise HTTPException(status_code=404, detail="No pending invitation found for this user")
 
-    # 2. Get the board
-    board_query = await db.execute(select(models.Board).where(models.Board.id == invitation.board_id))
+    # 3. Get the board associated with the invitation
+    board_query = await db.execute(
+        select(models.Board).where(models.Board.id == invitation.board_id)
+    )
     board = board_query.scalar_one_or_none()
     
     if not board:
         raise HTTPException(status_code=404, detail="Board no longer exists")
 
-    # 3. Add user to board_members association table
-    # This assumes your Board model has: members = relationship("User", secondary=board_members...)
-    board.members.append(current_user)
+    # 4. Add user to board members (using shared_boards or members relationship)
+    # Based on your models.py: User.shared_boards or Board.members
+    if board not in current_user.shared_boards:
+        current_user.shared_boards.append(board)
     
-    # 4. Update invitation status
+    # 5. Update status and Archive the notification so it disappears from the tray
     invitation.status = "accepted"
+    notification.is_archived = True
+    notification.is_read = True
     
-    await db.commit()
-    
-    return {"message": "Successfully joined the board", "board_id": board.id}
+    try:
+        await db.commit()
+        return {"message": "Successfully joined the board", "board_id": board.id}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Database error during acceptance")
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
@@ -4225,18 +4505,17 @@ from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
 
-# 1. Define the Base class here instead of importing it
-# This is the modern SQLAlchemy 2.0 way.
+# 1. Define the Base class (SQLAlchemy 2.0 style)
 class Base(DeclarativeBase):
     pass
 
 # --- 2. ASSOCIATION TABLE ---
-# This links users to boards they have been invited to.
+# Links users to boards they have been invited to.
 board_members = Table(
     "board_members",
     Base.metadata,
-    Column("user_id", ForeignKey("users.id"), primary_key=True),
-    Column("board_id", ForeignKey("boards.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("board_id", ForeignKey("boards.id", ondelete="CASCADE"), primary_key=True),
 )
 
 class User(Base):
@@ -4245,15 +4524,12 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True) 
-    
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
-
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     handle = Column(String, unique=True, index=True, nullable=False)
     bio = Column(Text, nullable=True)
-    
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -4274,7 +4550,7 @@ class Board(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
     # Relationships
     owner = relationship("User", back_populates="owned_boards")
@@ -4288,11 +4564,10 @@ class BoardInvitation(Base):
     board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
     sender_id = Column(Integer, ForeignKey("users.id"))
     recipient_id = Column(Integer, ForeignKey("users.id"))
-    # status can be: pending, accepted, declined
-    status = Column(String, default="pending") 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="pending") # pending, accepted, declined
+    created_at = Column(DateTime, default=func.now())
 
-    # Relationships to make fetching easy
+    # Relationships
     board = relationship("Board")
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
@@ -4305,13 +4580,11 @@ class Card(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Backlog")
     priority = Column(String, default="low")
-    
-    # Time-tracking fields for Dashboard/Stale logic
     due_date = Column(DateTime(timezone=True), nullable=True)
     last_moved_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
     
-    board_id = Column(Integer, ForeignKey("boards.id"))
     board = relationship("Board", back_populates="cards")
 
 class Comment(Base):
@@ -4319,26 +4592,21 @@ class Comment(Base):
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
     card_id = Column(Integer, ForeignKey("cards.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     
-    # Back-references
     author = relationship("User")
 
 class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(String) # e.g., "mention", "status_change", "assignment"
+    # This matches your requirement for "mention", "invite", etc.
+    type = Column(String, nullable=True) 
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)
     is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Who receives the notification
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    # Link to the specific card so clicking the notification opens it
     card_id = Column(Integer, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
 ==================================================
 FILE: .\backend\app\schemas.py
@@ -4440,8 +4708,10 @@ class CommentResponse(CommentBase):
 # --- NOTIFICATION SCHEMAS ---
 class NotificationResponse(BaseModel):
     id: int
-    type: str
+    user_id: int  # Keep this!
     message: str
+    # This is the "Fix" for the 500 error
+    type: Optional[str] = None 
     is_read: bool
     is_archived: bool
     created_at: datetime

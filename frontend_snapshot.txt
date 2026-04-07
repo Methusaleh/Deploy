@@ -202,14 +202,20 @@ FILE: ./frontend/src\api\client.js
 ==================================================
 import axios from "axios";
 
-const apiClient = axios.create({
+const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
-export default apiClient;
+// This interceptor is CRITICAL. It runs before every single request.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
 
 ==================================================
 FILE: ./frontend/src\api\socket.js
@@ -247,7 +253,7 @@ const Auth = ({ onLoginSuccess }) => {
 
     try {
       if (isLogin) {
-        // --- LOGIN LOGIC ---
+        // --- 1. LOGIN LOGIC ---
         const params = new URLSearchParams();
         params.append("username", formData.email);
         params.append("password", formData.password);
@@ -261,9 +267,25 @@ const Auth = ({ onLoginSuccess }) => {
         if (!response.ok) throw new Error("Invalid email or password");
 
         const data = await response.json();
-        // Save the token to local storage
-        localStorage.setItem("token", data.access_token);
-        dispatch({ type: "login" });
+        const token = data.access_token;
+        localStorage.setItem("token", token);
+
+        // --- 2. FETCH USER PROFILE ---
+        // This is the critical step to get the user's ID for the context
+        const userResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/me`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+
+        if (!userResponse.ok) throw new Error("Failed to fetch user profile");
+
+        const userData = await userResponse.json();
+
+        // --- 3. DISPATCH TO CONTEXT ---
+        // Pass the userData as the payload so BoardContext can load boards
+        dispatch({ type: "login", payload: userData });
         onLoginSuccess();
       } else {
         // --- REGISTER LOGIC ---
@@ -277,7 +299,7 @@ const Auth = ({ onLoginSuccess }) => {
         );
 
         if (!response.ok) throw new Error("Registration failed");
-        setIsLogin(true); // Switch to login after success
+        setIsLogin(true);
       }
     } catch (err) {
       setError(err.message);
@@ -510,9 +532,8 @@ function Board() {
                 <span className="material-icons">person_add</span>
                 <span>Share</span>
               </button>
+              <div className={styles.totalCount}>{cards.length} Cards</div>
             </div>
-
-            <div className={styles.totalCount}>{cards.length} Cards</div>
           </div>
         </header>
 
@@ -565,6 +586,7 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .header h1 {
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -573,14 +595,15 @@ FILE: ./frontend/src\components\Board.module.css
 .headerMain {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Changed from space-between to keep the group away from the User Menu on the right */
+  justify-content: flex-start;
   width: 100%;
 }
 
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.5rem; /* Consistent breathing room between elements */
 }
 
 .shareBtn {
@@ -611,12 +634,14 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .totalCount {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   background-color: rgba(255, 255, 255, 0.05);
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 6px; /* Matches button radius for a more consistent UI */
   border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .grid {
@@ -2199,6 +2224,7 @@ import styles from "./ShareModal.module.css";
 const ShareModal = ({ boardId, onClose }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -2216,13 +2242,30 @@ const ShareModal = ({ boardId, onClose }) => {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const sendInvite = async (userId) => {
+  const toggleUserSelection = (user) => {
+    if (selectedUsers.find((u) => u.id === user.id)) {
+      setSelectedUsers(selectedUsers.filter((u) => u.id !== user.id));
+    } else {
+      setSelectedUsers([...selectedUsers, user]);
+    }
+  };
+
+  const sendAllInvites = async () => {
     try {
-      await api.post(`/boards/${boardId}/invite`, { recipient_id: userId });
-      alert("Invitation sent!");
+      // Loop through selected users and send invites
+      const promises = selectedUsers.map((user) =>
+        api.post(`/boards/${boardId}/invite`, { recipient_id: user.id }),
+      );
+
+      await Promise.all(promises);
+      console.log(`Sent ${selectedUsers.length} invitations!`);
       onClose();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error sending invitation");
+      // Access the detailed error message from the backend response
+      const errorMessage =
+        err.response?.data?.detail || "Some invitations failed to send.";
+      console.error("Invite Error:", err);
+      alert(errorMessage);
     }
   };
 
@@ -2230,20 +2273,30 @@ const ShareModal = ({ boardId, onClose }) => {
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <h3>Collaborators</h3>
+
+        {/* Selected Users "Chips" Area */}
+        <div className={styles.stagingArea}>
+          {selectedUsers.map((user) => (
+            <div key={user.id} className={styles.userChip}>
+              {user.first_name}
+              <span onClick={() => toggleUserSelection(user)}>×</span>
+            </div>
+          ))}
+        </div>
+
         <input
           className={styles.searchInput}
-          type="text"
-          placeholder="Search by name or handle..."
+          placeholder="Search users..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
         />
+
         <div className={styles.resultsList}>
           {results.map((user) => (
             <div
               key={user.id}
-              className={styles.userRow}
-              onClick={() => sendInvite(user.id)}
+              className={`${styles.userRow} ${selectedUsers.find((u) => u.id === user.id) ? styles.selected : ""}`}
+              onClick={() => toggleUserSelection(user)}
             >
               <UserAvatar
                 name={`${user.first_name} ${user.last_name}`}
@@ -2253,19 +2306,30 @@ const ShareModal = ({ boardId, onClose }) => {
                 <span>
                   {user.first_name} {user.last_name}
                 </span>
-                <small>@{user.handle}</small>
+                {/* Fix: Only show @ if the handle doesn't already have it */}
+                <small>
+                  {user.handle.startsWith("@")
+                    ? user.handle
+                    : `@${user.handle}`}
+                </small>
               </div>
-              <button className={styles.inviteBtn}>Invite</button>
+              <div className={styles.checkbox}>
+                {selectedUsers.find((u) => u.id === user.id)
+                  ? "check_circle"
+                  : "add_circle"}
+              </div>
             </div>
           ))}
-          {query.length > 1 && results.length === 0 && (
-            <p
-              style={{ color: "#555", fontSize: "0.8rem", textAlign: "center" }}
-            >
-              No users found
-            </p>
-          )}
         </div>
+
+        <button
+          className={styles.mainInviteBtn}
+          disabled={selectedUsers.length === 0}
+          onClick={sendAllInvites}
+        >
+          Send {selectedUsers.length} Invitation
+          {selectedUsers.length !== 1 ? "s" : ""}
+        </button>
       </div>
     </div>
   );
@@ -2277,6 +2341,7 @@ export default ShareModal;
 FILE: ./frontend/src\components\ShareModal.module.css
 ==================================================
 /* frontend/src/components/ShareModal.module.css */
+
 .modalOverlay {
   position: fixed;
   top: 0;
@@ -2295,55 +2360,125 @@ FILE: ./frontend/src\components\ShareModal.module.css
   background: #111;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  width: 400px;
-  padding: 20px;
+  width: 440px; /* Slightly wider to accommodate the new layout */
+  padding: 24px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
 }
 
 .modalContent h3 {
   margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 1.1rem;
+  margin-bottom: 20px;
+  font-size: 1rem;
   color: var(--accent-cyan);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
 }
 
+/* --- STAGING AREA (Chip Container) --- */
+.stagingArea {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  min-height: 32px; /* Prevents layout jump when first user is added */
+}
+
+.userChip {
+  background: rgba(0, 245, 255, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.userChip span {
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--text-primary);
+  opacity: 0.6;
+}
+
+.userChip span:hover {
+  opacity: 1;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- INPUT --- */
 .searchInput {
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: #1a1a1a;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   color: white;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
   outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
 }
 
 .searchInput:focus {
   border-color: var(--accent-cyan);
 }
 
+/* --- RESULTS LIST --- */
 .resultsList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 250px;
+  gap: 4px;
+  max-height: 280px;
   overflow-y: auto;
+  padding-right: 4px;
+}
+
+.resultsList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.resultsList::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
 }
 
 .userRow {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
+  padding: 10px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .userRow:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* Highlight state for users already in the staging list */
+.userRow.selected {
+  background: rgba(0, 245, 255, 0.05);
+  border-color: rgba(0, 245, 255, 0.2);
 }
 
 .userDetails {
@@ -2363,20 +2498,56 @@ FILE: ./frontend/src\components\ShareModal.module.css
   color: var(--text-secondary);
 }
 
-.inviteBtn {
-  background: transparent;
-  border: 1px solid var(--accent-cyan);
-  color: var(--accent-cyan);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
+/* Icon indicator on the right of the row */
+.checkbox {
+  color: var(--text-secondary);
+  font-family: "Material Icons";
+  font-size: 20px;
 }
 
-.inviteBtn:hover {
+.userRow.selected .checkbox {
+  color: var(--accent-cyan);
+}
+
+/* --- MAIN ACTION BUTTON --- */
+.mainInviteBtn {
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px;
   background: var(--accent-cyan);
-  color: black;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mainInviteBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 245, 255, 0.3);
+}
+
+.mainInviteBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.mainInviteBtn:disabled {
+  background: #222;
+  color: #555;
+  cursor: not_allowed;
+  border: 1px solid var(--border-subtle);
+}
+
+.noResults {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-align: center;
+  margin: 20px 0;
 }
 
 ==================================================
@@ -2607,26 +2778,34 @@ const UserMenu = ({ onLogout }) => {
     const initUserMenu = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) return; // Guard clause if token is missing
+
         const headers = { Authorization: `Bearer ${token}` };
 
+        // 1. Fetch User Profile
         const userRes = await fetch(
           `${import.meta.env.VITE_API_URL}/users/me`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
+
+          // --- THE FIX ---
+          // Synchronize this user data with the global BoardContext
+          // This triggers the sidebar fetch in BoardContext.jsx
+          dispatch({ type: "login", payload: user });
+
           socket.emit("join_user_room", user.id);
         }
 
+        // 2. Fetch Notifications
         const notifRes = await fetch(
           `${import.meta.env.VITE_API_URL}/notifications`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (notifRes.ok) {
           const notifs = await notifRes.json();
           setNotifications(notifs);
@@ -2635,16 +2814,25 @@ const UserMenu = ({ onLogout }) => {
         console.error("UserMenu Init Error:", err);
       }
     };
+
     initUserMenu();
-  }, []);
+  }, [dispatch]); // Added dispatch here
 
   // 2. LIVE SOCKET LISTENER
   useEffect(() => {
-    socket.on("new_notification", (newNotif) => {
-      setNotifications((prev) => [newNotif, ...prev]);
+    // Listen for real-time notifications (invites, mentions, etc.)
+    socket.on("new_notification", (notif) => {
+      console.log("Real-time notification received:", notif);
+
+      // Update the local list so the red dot/dropdown updates immediately
+      setNotifications((prev) => [notif, ...prev]);
     });
-    return () => socket.off("new_notification");
-  }, []);
+
+    // Cleanup the listener when the component unmounts
+    return () => {
+      socket.off("new_notification");
+    };
+  }, [socket]); // Adding socket here ensures the listener stays fresh
 
   // 3. UPDATED: CLEAR ALL (ARCHIVE ALL)
   const clearAllNotifications = async () => {
@@ -2723,6 +2911,31 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
+  const handleAcceptInvite = async (e, inviteId) => {
+    e.stopPropagation(); // Don't trigger the 'teleport to card' logic
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/boards/invitations/${inviteId}/accept`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (res.ok) {
+        // 1. Tell the user it worked
+        console.log("Joined board successfully!");
+        // 2. Remove the notification from the list
+        setNotifications((prev) => prev.filter((n) => n.id !== inviteId));
+        // 3. Refresh the sidebar boards
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Failed to accept invite:", err);
+    }
+  };
+
   // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
@@ -2776,6 +2989,17 @@ const UserMenu = ({ onLogout }) => {
                   >
                     <div className={styles.notifContent}>
                       <p>{n.message}</p>
+
+                      {/* NEW: Accept Invitation Button */}
+                      {n.type === "invite" && (
+                        <button
+                          className={styles.acceptInviteBtn}
+                          onClick={(e) => handleAcceptInvite(e, n.id)}
+                        >
+                          Accept Invitation
+                        </button>
+                      )}
+
                       <span className={styles.timeAgo}>
                         {n.created_at
                           ? new Date(n.created_at).toLocaleTimeString([], {
@@ -2806,7 +3030,7 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
+        className={styles.avatarWrapper}
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
@@ -3030,6 +3254,27 @@ FILE: ./frontend/src\components\UserMenu.module.css
   font-size: 0.9rem;
 }
 
+.acceptInviteBtn {
+  margin-top: 8px;
+  background: var(--accent-cyan);
+  color: #000;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  display: block; /* Ensures it sits on its own line under the message */
+  width: fit-content;
+}
+
+.acceptInviteBtn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
 .dismissBtn {
   background: none;
   border: none;
@@ -3156,7 +3401,7 @@ function BoardProvider({ children }) {
 
   useEffect(() => {
     // Only fetch if we are actually logged in
-    if (state.isAuthenticated) {
+    if (state.isAuthenticated && state.userData?.id) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
@@ -3168,7 +3413,7 @@ function BoardProvider({ children }) {
       }
       loadBoards();
     }
-  }, [state.isAuthenticated]); // This trigger is the magic part
+  }, [state.isAuthenticated, state.userData?.id]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {

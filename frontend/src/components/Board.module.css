@@ -13,6 +13,7 @@
 }
 
 .header h1 {
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -21,14 +22,15 @@
 .headerMain {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Changed from space-between to keep the group away from the User Menu on the right */
+  justify-content: flex-start;
   width: 100%;
 }
 
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.5rem; /* Consistent breathing room between elements */
 }
 
 .shareBtn {
@@ -59,12 +61,14 @@
 }
 
 .totalCount {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   background-color: rgba(255, 255, 255, 0.05);
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 6px; /* Matches button radius for a more consistent UI */
   border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .grid {

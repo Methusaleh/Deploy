@@ -1,6 +1,7 @@
 // frontend/src/components/UserMenu.jsx
 import React, { useState, useRef, useEffect } from "react";
 import socket from "../api/socket";
+import api from "../api/client";
 import { useBoards } from "../context/BoardContext"; // 1. IMPORT HOOK
 import UserAvatar from "./UserAvatar";
 import styles from "./UserMenu.module.css";
@@ -13,6 +14,7 @@ const UserMenu = ({ onLogout }) => {
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [userData, setUserData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const menuRef = useRef(null);
 
   // 1. INITIALIZATION: Fetch User Profile and Notifications
@@ -20,44 +22,66 @@ const UserMenu = ({ onLogout }) => {
     const initUserMenu = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) {
+          setIsLoading(false);
+          return; // Guard clause if token is missing
+        }
+
         const headers = { Authorization: `Bearer ${token}` };
 
+        // 1. Fetch User Profile
         const userRes = await fetch(
           `${import.meta.env.VITE_API_URL}/users/me`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (userRes.ok) {
           const user = await userRes.json();
           setUserData(user);
+
+          // --- THE FIX ---
+          // Synchronize this user data with the global BoardContext
+          // This triggers the sidebar fetch in BoardContext.jsx
+          dispatch({ type: "login", payload: user });
+
           socket.emit("join_user_room", user.id);
         }
 
+        // 2. Fetch Notifications
         const notifRes = await fetch(
           `${import.meta.env.VITE_API_URL}/notifications`,
-          {
-            headers,
-          },
+          { headers },
         );
+
         if (notifRes.ok) {
           const notifs = await notifRes.json();
           setNotifications(notifs);
         }
       } catch (err) {
         console.error("UserMenu Init Error:", err);
+      } finally {
+        setIsLoading(false);
       }
     };
+
     initUserMenu();
-  }, []);
+  }, [dispatch]); // Added dispatch here
 
   // 2. LIVE SOCKET LISTENER
   useEffect(() => {
-    socket.on("new_notification", (newNotif) => {
-      setNotifications((prev) => [newNotif, ...prev]);
+    // Listen for real-time notifications (invites, mentions, etc.)
+    socket.on("new_notification", (notif) => {
+      console.log("Real-time notification received:", notif);
+
+      // Update the local list so the red dot/dropdown updates immediately
+      setNotifications((prev) => [notif, ...prev]);
     });
-    return () => socket.off("new_notification");
-  }, []);
+
+    // Cleanup the listener when the component unmounts
+    return () => {
+      socket.off("new_notification");
+    };
+  }, [socket]); // Adding socket here ensures the listener stays fresh
 
   // 3. UPDATED: CLEAR ALL (ARCHIVE ALL)
   const clearAllNotifications = async () => {
@@ -136,6 +160,29 @@ const UserMenu = ({ onLogout }) => {
     }
   };
 
+  const handleAcceptInvite = async (e, notifId) => {
+    e.stopPropagation(); // Prevents clicking the button from triggering the background notification click
+    try {
+      // We use the 'api' instance which already has the Base URL and the Token interceptor
+      const res = await api.post(`/boards/invitations/${notifId}/accept`);
+
+      if (res.status === 200) {
+        console.log("Joined board successfully!");
+
+        // Remove the notification from the tray immediately
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+
+        // Refresh to populate the new board in the sidebar
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Failed to accept invite:", err);
+      // This will now show the actual error from your FastAPI 'detail' field
+      const errorMsg = err.response?.data?.detail || "Failed to join board.";
+      alert(errorMsg);
+    }
+  };
+
   // UI HELPERS
   const toggleInbox = () => {
     const nextState = !isInboxOpen;
@@ -156,6 +203,8 @@ const UserMenu = ({ onLogout }) => {
   }, []);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  if (isLoading) return null;
 
   return (
     <div className={styles.userMenuContainer} ref={menuRef}>
@@ -189,6 +238,17 @@ const UserMenu = ({ onLogout }) => {
                   >
                     <div className={styles.notifContent}>
                       <p>{n.message}</p>
+
+                      {/* NEW: Accept Invitation Button */}
+                      {n.type === "invite" && (
+                        <button
+                          className={styles.acceptInviteBtn}
+                          onClick={(e) => handleAcceptInvite(e, n.id)}
+                        >
+                          Accept Invitation
+                        </button>
+                      )}
+
                       <span className={styles.timeAgo}>
                         {n.created_at
                           ? new Date(n.created_at).toLocaleTimeString([], {
@@ -219,16 +279,14 @@ const UserMenu = ({ onLogout }) => {
 
       {/* ACCOUNT SECTION */}
       <div
-        className={styles.avatarWrapper} // Optional: Rename class if you want to adjust margins
+        className={styles.avatarWrapper}
         onClick={() => {
           setIsAccountOpen(!isAccountOpen);
           setIsInboxOpen(false);
         }}
       >
         <UserAvatar
-          name={
-            userData ? `${userData.first_name} ${userData.last_name}` : "Aaron"
-          }
+          name={`${userData.first_name} ${userData.last_name}`}
           size={36}
         />
       </div>
@@ -237,9 +295,7 @@ const UserMenu = ({ onLogout }) => {
         <div className={styles.dropdown}>
           <div className={styles.userInfo}>
             <p className={styles.userName}>
-              {userData
-                ? `${userData.first_name} ${userData.last_name}`
-                : "Aaron"}
+              {`${userData.first_name} ${userData.last_name}`}
             </p>
             <p className={styles.userRole}>Lead Developer</p>
           </div>

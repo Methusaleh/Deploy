@@ -1,21 +1,20 @@
 import socketio
+import re
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer  
 from contextlib import asynccontextmanager
-from sqlalchemy import select
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from typing import List
 from datetime import datetime, timezone
-import re
 
 # Local App Imports
 from .database import engine, get_db
 from . import models, schemas, auth_utils, crud
 from .models import Base
-import app.auth_utils as auth_utils
 
 # 1. Define the Lifespan logic
 @asynccontextmanager
@@ -160,8 +159,6 @@ async def login_for_access_token(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-import re # Make sure this is at the very top of main.py!
-
 @app.post("/register", response_model=schemas.UserResponse)
 async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     # 1. Check if email exists
@@ -245,10 +242,22 @@ async def get_my_boards(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
-    # This ensures users ONLY see boards where they are the owner
-    query = select(models.Board).where(models.Board.owner_id == current_user.id)
+    """
+    Fetches all boards where the user is either the Owner 
+    OR a Member (via the association table).
+    """
+    query = (
+        select(models.Board)
+        .outerjoin(models.board_members)
+        .where(
+            (models.Board.owner_id == current_user.id) | 
+            (models.board_members.c.user_id == current_user.id)
+        )
+    )
+    
     result = await db.execute(query)
-    return result.scalars().all()
+    # unique() is required when joining to prevent duplicate board objects in the result
+    return result.scalars().unique().all()
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -508,16 +517,19 @@ async def search_users(
     current_user: models.User = Depends(get_current_user)
 ):
     """Search users for mentions or board invitations, excluding self."""
+    # Clean the query: remove '@' if the user typed it, so we search the raw string
+    clean_q = q.replace("@", "").lower()
+    search_term = f"%{clean_q}%"
+
     query = (
         select(models.User)
         .where(
-            # 1. Search by name or handle
             (
-                (models.User.first_name.ilike(f"%{q}%")) | 
-                (models.User.last_name.ilike(f"%{q}%")) |
-                (models.User.handle.ilike(f"%{q}%"))
+                (models.User.first_name.ilike(search_term)) | 
+                (models.User.last_name.ilike(search_term)) |
+                (models.User.handle.ilike(search_term)) |
+                (models.User.email.ilike(search_term))
             ) & 
-            # 2. Don't include the person currently searching
             (models.User.id != current_user.id)
         )
         .limit(5)
@@ -582,11 +594,10 @@ async def invite_to_board(
         raise HTTPException(status_code=403, detail="Only the board owner can invite members")
 
     # 2. Check if user is already a member
-    # (Assuming you have the board_members relationship or association table set up)
     member_check = await db.execute(
-        select(models.User).join(models.board_members).where(
-            models.board_members.c.board_id == board_id,
-            models.board_members.c.user_id == invite_data.recipient_id
+        select(models.User).join(models.Board.members).where(
+            models.Board.id == board_id,
+            models.User.id == invite_data.recipient_id
         )
     )
     if member_check.scalar_one_or_none():
@@ -601,58 +612,87 @@ async def invite_to_board(
     )
     db.add(new_invite)
     
-    # 4. Create an In-App Notification
+    # 4. Create an In-App Notification 
+    # FIX: 'link' removed as it is not a valid column in your models.py
     new_notif = models.Notification(
         user_id=invite_data.recipient_id,
         message=f"{current_user.first_name} invited you to join the board: {board.title}",
-        link=f"/boards/{board_id}" # We can use this to trigger the accept modal
+        type="invite"
     )
     db.add(new_notif)
     
-    await db.commit()
+    try:
+        await db.commit()
+        await db.refresh(new_notif) # Refresh to get the generated ID and created_at
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create invitation")
 
     # 5. Socket.io Real-time Alert
-    # This triggers the red dot on the recipient's bell icon instantly
     await sio.emit("new_notification", {
         "id": new_notif.id,
         "message": new_notif.message,
-        "created_at": str(new_notif.created_at)
+        "created_at": str(new_notif.created_at),
+        "type": "invite" # Added type so frontend knows how to style it
     }, room=f"user_{invite_data.recipient_id}")
 
     return {"message": "Invitation sent successfully"}
 
-@app.post("/boards/invitations/{invite_id}/accept")
+@app.post("/boards/invitations/{notif_id}/accept")
 async def accept_invitation(
-    invite_id: int,
+    notif_id: int, 
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Find the pending invitation for the current user
-    query = select(models.BoardInvitation).where(
-        models.BoardInvitation.id == invite_id,
+    # 1. Find the Notification to confirm context
+    notif_query = await db.execute(
+        select(models.Notification).where(models.Notification.id == notif_id)
+    )
+    notification = notif_query.scalar_one_or_none()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    # 2. Find the pending invitation for this user
+    # We look for the most recent pending invite for the recipient
+    invite_query = select(models.BoardInvitation).where(
         models.BoardInvitation.recipient_id == current_user.id,
         models.BoardInvitation.status == "pending"
-    )
-    result = await db.execute(query)
-    invitation = result.scalar_one_or_none()
+    ).order_by(models.BoardInvitation.created_at.desc())
+    
+    result = await db.execute(invite_query)
+    invitation = result.scalars().first()
 
     if not invitation:
-        raise HTTPException(status_code=404, detail="Invitation not found or already processed")
+        raise HTTPException(status_code=404, detail="No pending invitation found for this user")
 
-    # 2. Get the board
-    board_query = await db.execute(select(models.Board).where(models.Board.id == invitation.board_id))
+    # 3. Get the board associated with the invitation
+    # We use selectinload to ensure we can modify the members relationship safely
+    from sqlalchemy.orm import selectinload
+    board_query = await db.execute(
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == invitation.board_id)
+    )
     board = board_query.scalar_one_or_none()
     
     if not board:
         raise HTTPException(status_code=404, detail="Board no longer exists")
 
-    # 3. Add user to board_members association table
-    # This assumes your Board model has: members = relationship("User", secondary=board_members...)
-    board.members.append(current_user)
+    # 4. Add user to board members
+    # Checking against board.members is more direct since we loaded it above
+    if current_user not in board.members:
+        board.members.append(current_user)
     
-    # 4. Update invitation status
+    # 5. Update status and Archive the notification
     invitation.status = "accepted"
+    notification.is_archived = True
+    notification.is_read = True
     
-    await db.commit()
-    
-    return {"message": "Successfully joined the board", "board_id": board.id}
+    try:
+        await db.commit()
+        return {"message": "Successfully joined the board", "board_id": board.id}
+    except Exception as e:
+        await db.rollback()
+        print(f"Accept Error: {e}")
+        raise HTTPException(status_code=500, detail="Database error during acceptance")

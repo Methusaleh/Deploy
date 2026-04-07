@@ -7,6 +7,7 @@ import styles from "./ShareModal.module.css";
 const ShareModal = ({ boardId, onClose }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -24,13 +25,30 @@ const ShareModal = ({ boardId, onClose }) => {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const sendInvite = async (userId) => {
+  const toggleUserSelection = (user) => {
+    if (selectedUsers.find((u) => u.id === user.id)) {
+      setSelectedUsers(selectedUsers.filter((u) => u.id !== user.id));
+    } else {
+      setSelectedUsers([...selectedUsers, user]);
+    }
+  };
+
+  const sendAllInvites = async () => {
     try {
-      await api.post(`/boards/${boardId}/invite`, { recipient_id: userId });
-      alert("Invitation sent!");
+      // Loop through selected users and send invites
+      const promises = selectedUsers.map((user) =>
+        api.post(`/boards/${boardId}/invite`, { recipient_id: user.id }),
+      );
+
+      await Promise.all(promises);
+      console.log(`Sent ${selectedUsers.length} invitations!`);
       onClose();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error sending invitation");
+      // Access the detailed error message from the backend response
+      const errorMessage =
+        err.response?.data?.detail || "Some invitations failed to send.";
+      console.error("Invite Error:", err);
+      alert(errorMessage);
     }
   };
 
@@ -38,20 +56,30 @@ const ShareModal = ({ boardId, onClose }) => {
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <h3>Collaborators</h3>
+
+        {/* Selected Users "Chips" Area */}
+        <div className={styles.stagingArea}>
+          {selectedUsers.map((user) => (
+            <div key={user.id} className={styles.userChip}>
+              {user.first_name}
+              <span onClick={() => toggleUserSelection(user)}>×</span>
+            </div>
+          ))}
+        </div>
+
         <input
           className={styles.searchInput}
-          type="text"
-          placeholder="Search by name or handle..."
+          placeholder="Search users..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
         />
+
         <div className={styles.resultsList}>
           {results.map((user) => (
             <div
               key={user.id}
-              className={styles.userRow}
-              onClick={() => sendInvite(user.id)}
+              className={`${styles.userRow} ${selectedUsers.find((u) => u.id === user.id) ? styles.selected : ""}`}
+              onClick={() => toggleUserSelection(user)}
             >
               <UserAvatar
                 name={`${user.first_name} ${user.last_name}`}
@@ -61,19 +89,30 @@ const ShareModal = ({ boardId, onClose }) => {
                 <span>
                   {user.first_name} {user.last_name}
                 </span>
-                <small>@{user.handle}</small>
+                {/* Fix: Only show @ if the handle doesn't already have it */}
+                <small>
+                  {user.handle.startsWith("@")
+                    ? user.handle
+                    : `@${user.handle}`}
+                </small>
               </div>
-              <button className={styles.inviteBtn}>Invite</button>
+              <div className={styles.checkbox}>
+                {selectedUsers.find((u) => u.id === user.id)
+                  ? "check_circle"
+                  : "add_circle"}
+              </div>
             </div>
           ))}
-          {query.length > 1 && results.length === 0 && (
-            <p
-              style={{ color: "#555", fontSize: "0.8rem", textAlign: "center" }}
-            >
-              No users found
-            </p>
-          )}
         </div>
+
+        <button
+          className={styles.mainInviteBtn}
+          disabled={selectedUsers.length === 0}
+          onClick={sendAllInvites}
+        >
+          Send {selectedUsers.length} Invitation
+          {selectedUsers.length !== 1 ? "s" : ""}
+        </button>
       </div>
     </div>
   );

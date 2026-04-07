@@ -95,8 +95,10 @@ class CommentResponse(CommentBase):
 # --- NOTIFICATION SCHEMAS ---
 class NotificationResponse(BaseModel):
     id: int
-    type: str
+    user_id: int  # Keep this!
     message: str
+    # This is the "Fix" for the 500 error
+    type: Optional[str] = None 
     is_read: bool
     is_archived: bool
     created_at: datetime

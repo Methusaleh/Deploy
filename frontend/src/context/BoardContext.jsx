@@ -59,7 +59,7 @@ function BoardProvider({ children }) {
 
   useEffect(() => {
     // Only fetch if we are actually logged in
-    if (state.isAuthenticated) {
+    if (state.isAuthenticated && state.userData?.id) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
@@ -71,7 +71,7 @@ function BoardProvider({ children }) {
       }
       loadBoards();
     }
-  }, [state.isAuthenticated]); // This trigger is the magic part
+  }, [state.isAuthenticated, state.userData?.id]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {

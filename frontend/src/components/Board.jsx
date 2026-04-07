@@ -107,9 +107,8 @@ function Board() {
                 <span className="material-icons">person_add</span>
                 <span>Share</span>
               </button>
+              <div className={styles.totalCount}>{cards.length} Cards</div>
             </div>
-
-            <div className={styles.totalCount}>{cards.length} Cards</div>
           </div>
         </header>
 

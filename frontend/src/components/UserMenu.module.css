@@ -183,6 +183,27 @@
   font-size: 0.9rem;
 }
 
+.acceptInviteBtn {
+  margin-top: 8px;
+  background: var(--accent-cyan);
+  color: #000;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  display: block; /* Ensures it sits on its own line under the message */
+  width: fit-content;
+}
+
+.acceptInviteBtn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
 .dismissBtn {
   background: none;
   border: none;
