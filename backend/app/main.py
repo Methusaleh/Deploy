@@ -730,3 +730,42 @@ async def decline_invitation(
     await db.commit()
     
     return {"message": "Invitation declined"}
+
+@app.delete("/boards/{board_id}")
+async def delete_board(
+    board_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Find the board
+    query = await db.execute(select(models.Board).where(models.Board.id == board_id))
+    board = query.scalar_one_or_none()
+
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    # 2. Check Ownership
+    if board.owner_id == current_user.id:
+        # OWNER ACTION: Delete the whole thing
+        await db.delete(board)
+        await db.commit()
+        return {"message": "Board deleted successfully"}
+    
+    # 3. MEMBER ACTION: Leave the board
+    # We look for the association in the board_members table
+    # Since we loaded the board, we can check board.members
+    from sqlalchemy.orm import selectinload
+    # Re-query with members loaded to be safe
+    query = await db.execute(
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == board_id)
+    )
+    board = query.scalar_one()
+
+    if current_user in board.members:
+        board.members.remove(current_user)
+        await db.commit()
+        return {"message": "You have left the board"}
+    
+    raise HTTPException(status_code=403, detail="You are not a member of this board")
