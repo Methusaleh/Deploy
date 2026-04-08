@@ -26,8 +26,17 @@ export const deleteCard = async (cardId) => {
   return res.data;
 };
 
-// --- NEW FUNCTION: Create a Board ---
 export const createBoard = async (title) => {
   const res = await apiClient.post("/boards/", { title });
+  return res.data;
+};
+
+export const deleteOrLeaveBoard = async (boardId) => {
+  const res = await apiClient.delete(`/boards/${boardId}`);
+  return res.data;
+};
+
+export const removeMember = async (boardId, userId) => {
+  const res = await apiClient.delete(`/boards/${boardId}/members/${userId}`);
   return res.data;
 };

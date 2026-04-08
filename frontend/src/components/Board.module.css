@@ -22,7 +22,6 @@
 .headerMain {
   display: flex;
   align-items: center;
-  /* Changed from space-between to keep the group away from the User Menu on the right */
   justify-content: flex-start;
   width: 100%;
 }
@@ -30,7 +29,7 @@
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem; /* Consistent breathing room between elements */
+  gap: 1.5rem;
 }
 
 .shareBtn {
@@ -49,7 +48,7 @@
 }
 
 .shareBtn:hover {
-  background: rgba(0, 245, 255, 0.08); /* Using your cyan variable */
+  background: rgba(0, 245, 255, 0.08);
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
   box-shadow: 0 0 15px rgba(0, 245, 255, 0.1);
@@ -57,7 +56,7 @@
 }
 
 .shareBtn span {
-  font-size: 18px; /* Material icon size */
+  font-size: 18px;
 }
 
 .totalCount {
@@ -65,7 +64,7 @@
   color: var(--text-secondary);
   background-color: rgba(255, 255, 255, 0.05);
   padding: 4px 12px;
-  border-radius: 6px; /* Matches button radius for a more consistent UI */
+  border-radius: 6px;
   border: 1px solid var(--border-subtle);
   font-weight: 600;
   white-space: nowrap;
@@ -76,13 +75,12 @@
   flex: 1;
   padding: 1.5rem;
   gap: 1.5rem;
-  overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
-  overflow-y: hidden; /* Hide vertical scrollbar */
+  overflow-x: auto;
+  overflow-y: hidden;
   align-items: flex-start;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Custom scrollbar for that premium dark-mode feel */
 .grid::-webkit-scrollbar {
   height: 8px;
 }
@@ -90,4 +88,94 @@
 .grid::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
+}
+
+/* --- NEW SETTINGS DROPDOWN STYLES --- */
+
+.settingsWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settingsTrigger {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+  padding: 4px;
+}
+
+.settingsTrigger:hover {
+  color: var(--accent-cyan);
+}
+
+.settingsDropdown {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 200px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settingsHeader {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.settingsHeader span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.settingsList {
+  padding: 8px;
+}
+
+.dangerAction {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: #ff4d4d;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+  text-align: left;
+}
+
+.dangerAction:hover {
+  background: rgba(255, 77, 77, 0.1);
+}
+
+.dangerAction .material-icons {
+  font-size: 1.2rem;
 }

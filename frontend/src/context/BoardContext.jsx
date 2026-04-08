@@ -63,7 +63,7 @@ function BoardProvider({ children }) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
-          const data = await getBoards(state.userData.id);
+          const data = await getBoards();
           dispatch({ type: "boardsLoaded", payload: data });
         } catch {
           dispatch({ type: "error" });
