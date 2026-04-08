@@ -20,7 +20,7 @@ const CreateBoardModal = ({ onClose }) => {
 
       // We force the context to reload the sidebar so the new board appears
       // (Assuming you have a way to refresh boards, or we just reload the page for V1)
-      window.location.reload();
+      onClose();
     } catch (err) {
       console.error("Failed to create board:", err);
       setError("Failed to create board. Please try again.");

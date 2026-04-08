@@ -1,0 +1,34 @@
+/* frontend/src/components/MemberFacepile.module.css */
+.facepile {
+  display: flex;
+  align-items: center;
+  flex-direction: row-reverse; /* Leftmost member stays on top */
+  justify-content: flex-end;
+}
+
+.avatarWrapper {
+  margin-left: -10px; /* Overlap effect */
+  border-radius: 50%;
+  border: 2px solid var(--bg-main); /* Cut-out effect */
+  transition: transform 0.2s ease;
+}
+
+.avatarWrapper:hover {
+  transform: translateY(-4px);
+  z-index: 10;
+}
+
+.extraBubble {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: -10px;
+}

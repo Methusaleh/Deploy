@@ -25,7 +25,11 @@ function reducer(state, action) {
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
-      return { ...state, activeBoard: action.payload, cards: [] };
+      return {
+        ...state,
+        activeBoard: action.payload,
+        cards: state.activeBoard?.id === action.payload?.id ? state.cards : [],
+      };
     case "setCards":
       return { ...state, cards: action.payload, status: "ready" };
     case "selectCard":
@@ -59,19 +63,20 @@ function BoardProvider({ children }) {
 
   useEffect(() => {
     // Only fetch if we are actually logged in
-    if (state.isAuthenticated && state.userData?.id) {
+    if (state.isAuthenticated) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
           const data = await getBoards();
           dispatch({ type: "boardsLoaded", payload: data });
-        } catch {
+        } catch (err) {
+          console.error("Board Load Error:", err);
           dispatch({ type: "error" });
         }
       }
       loadBoards();
     }
-  }, [state.isAuthenticated, state.userData?.id]); // This trigger is the magic part
+  }, [state.isAuthenticated]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {
@@ -132,12 +137,23 @@ function BoardProvider({ children }) {
       // dispatch({ type: "addNotification", payload: notif });
     });
 
+    socket.on("refresh_boards", async () => {
+      console.log("Real-time board refresh triggered!");
+      try {
+        const data = await getBoards();
+        dispatch({ type: "boardsLoaded", payload: data });
+      } catch (err) {
+        console.error("Failed to sync boards:", err);
+      }
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");
       socket.off("card_created");
       socket.off("new_notification");
+      socket.off("refresh_boards");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 

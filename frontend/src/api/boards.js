@@ -6,6 +6,11 @@ export const getBoards = async () => {
   return res.data;
 };
 
+export const getBoardDetails = async (boardId) => {
+  const res = await apiClient.get(`/boards/${boardId}`);
+  return res.data;
+};
+
 export const getBoardCards = async (boardId) => {
   const res = await apiClient.get(`/boards/${boardId}/cards/`);
   return res.data;

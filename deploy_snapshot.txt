@@ -191,64 +191,52 @@ createRoot(document.getElementById("root")).render(
 ==================================================
 FILE: ./frontend/src\api\boards.js
 ==================================================
-import apiCLient from "./client";
+// frontend/src/api/boards.js
+import apiClient from "./client"; // Notice I fixed the typo (apiCLient -> apiClient)
 
 export const getBoards = async () => {
-  const token = localStorage.getItem("token"); // Grab your saved token
+  const res = await apiClient.get("/boards/me");
+  return res.data;
+};
 
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/boards/me`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`, // Send the token in the header
-    },
-  });
-
-  if (!response.ok) {
-    // If the token is expired or invalid, the backend returns 401
-    throw new Error("Failed to fetch boards");
-  }
-  return response.json();
+export const getBoardDetails = async (boardId) => {
+  const res = await apiClient.get(`/boards/${boardId}`);
+  return res.data;
 };
 
 export const getBoardCards = async (boardId) => {
-  const res = await apiCLient.get(`/boards/${boardId}/cards/`);
+  const res = await apiClient.get(`/boards/${boardId}/cards/`);
   return res.data;
 };
 
 export const updateCard = async (cardId, cardData) => {
-  const token = localStorage.getItem("token");
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/cards/${cardId}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(cardData),
-    },
-  );
-  if (!response.ok) throw new Error("Failed to update card");
-  return response.json();
+  const res = await apiClient.put(`/cards/${cardId}`, cardData);
+  return res.data;
 };
 
 export const createCard = async (cardData) => {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/cards/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cardData),
-  });
-  if (!response.ok) throw new Error("Failed to create card");
-  return response.json();
+  const res = await apiClient.post("/cards/", cardData);
+  return res.data;
 };
 
 export const deleteCard = async (cardId) => {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/${cardId}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) throw new Error("Failed to delete card");
-  return response.json();
+  const res = await apiClient.delete(`/cards/${cardId}`);
+  return res.data;
+};
+
+export const createBoard = async (title) => {
+  const res = await apiClient.post("/boards/", { title });
+  return res.data;
+};
+
+export const deleteOrLeaveBoard = async (boardId) => {
+  const res = await apiClient.delete(`/boards/${boardId}`);
+  return res.data;
+};
+
+export const removeMember = async (boardId, userId) => {
+  const res = await apiClient.delete(`/boards/${boardId}/members/${userId}`);
+  return res.data;
 };
 
 ==================================================
@@ -497,21 +485,32 @@ FILE: ./frontend/src\components\Auth.module.css
 ==================================================
 FILE: ./frontend/src\components\Board.jsx
 ==================================================
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { useBoards } from "../context/BoardContext";
-import { getBoardCards, updateCard } from "../api/boards";
+import {
+  getBoardCards,
+  updateCard,
+  deleteOrLeaveBoard,
+  getBoardDetails,
+} from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
 import Home from "./Home";
 import ShareModal from "./ShareModal";
+import ConfirmModal from "./ConfirmModal";
+import MemberFacepile from "./MemberFacepile";
 
 function Board() {
-  const { activeBoard, cards, status, dispatch } = useBoards();
+  const { activeBoard, cards, status, dispatch, userData } = useBoards();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // Extract ID safely
   const { id } = activeBoard || {};
+  const menuRef = useRef(null);
 
   // Consistent Column IDs (Sync these with your DB status values!)
   const COLUMNS = [
@@ -522,25 +521,67 @@ function Board() {
     { id: "deploy", title: "Deploy" },
   ];
 
-  useEffect(
-    function () {
-      if (!id) return;
+  // Inside Board.jsx useEffect
+  const lastFetchedId = useRef(null);
 
-      async function fetchCards() {
-        try {
-          dispatch({ type: "loading" });
-          const data = await getBoardCards(id);
-          dispatch({ type: "setCards", payload: data });
-        } catch (err) {
-          console.error("Board Fetch Error:", err);
-          dispatch({ type: "error", payload: err.message });
-        }
+  useEffect(() => {
+    if (!id) return;
+
+    // If we've already fetched the details for THIS board ID, stop here.
+    if (lastFetchedId.current === id) return;
+
+    async function fetchBoardAndCards() {
+      try {
+        // 1. Fetch details
+        const boardData = await getBoardDetails(id);
+
+        // 2. Mark this ID as 'done' before updating state
+        lastFetchedId.current = id;
+
+        dispatch({ type: "setActiveBoard", payload: boardData });
+
+        // 3. Fetch cards
+        const cardData = await getBoardCards(id);
+        dispatch({ type: "setCards", payload: cardData });
+      } catch (err) {
+        console.error("Board Fetch Error:", err);
       }
+    }
 
-      fetchCards();
-    },
-    [id, dispatch],
-  );
+    fetchBoardAndCards();
+  }, [id, dispatch]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleDeleteOrLeave = () => {
+    setIsSettingsOpen(false); // Close the small dropdown menu
+    setShowConfirm(true); // Open the big confirmation modal
+  };
+
+  const handleDeleteConfirm = async () => {
+    setDeleteError(""); // Clear any previous errors
+    try {
+      await deleteOrLeaveBoard(activeBoard.id);
+      setShowConfirm(false);
+      dispatch({ type: "setActiveBoard", payload: null });
+      window.location.reload();
+    } catch (err) {
+      console.error("Action failed:", err);
+      // Capture the message instead of alerting it
+      const msg =
+        err.response?.data?.detail ||
+        "Failed to process request. Please try again.";
+      setDeleteError(msg);
+    }
+  };
 
   // This function runs the moment you let go of a dragged card
   const onDragEnd = async (result) => {
@@ -597,8 +638,18 @@ function Board() {
       <div className={styles.boardContainer}>
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <div className={styles.titleGroup}>
+            <div className={styles.contextGroup}>
               <h1>{activeBoard.title}</h1>
+              <MemberFacepile
+                members={activeBoard.members}
+                owner={activeBoard.owner_id === userData?.id ? userData : null}
+              />
+            </div>
+            <div className={styles.actionGroup}>
+              <div className={styles.totalCount}>
+                {cards.length} {cards.length === 1 ? "Card" : "Cards"}
+              </div>
+
               <button
                 className={styles.shareBtn}
                 onClick={() => setIsShareModalOpen(true)}
@@ -606,7 +657,44 @@ function Board() {
                 <span className="material-icons">person_add</span>
                 <span>Share</span>
               </button>
-              <div className={styles.totalCount}>{cards.length} Cards</div>
+
+              <div className={styles.settingsWrapper} ref={menuRef}>
+                <button
+                  className={styles.settingsTrigger}
+                  onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                >
+                  <span className="material-icons">settings</span>
+                </button>
+
+                {isSettingsOpen && (
+                  <div className={styles.settingsDropdown}>
+                    <div className={styles.settingsHeader}>
+                      <span>Board Settings</span>
+                    </div>
+
+                    <div className={styles.settingsList}>
+                      {/* We can add more items here later (e.g., Rename Board) */}
+
+                      <button
+                        className={styles.dangerAction}
+                        onClick={() => {
+                          setIsSettingsOpen(false);
+                          handleDeleteOrLeave();
+                        }}
+                      >
+                        <span className="material-icons">
+                          {activeBoard.owner_id === userData.id
+                            ? "delete_forever"
+                            : "logout"}
+                        </span>
+                        {activeBoard.owner_id === userData.id
+                          ? "Delete Board"
+                          : "Leave Board"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -635,6 +723,33 @@ function Board() {
             onClose={() => setIsShareModalOpen(false)}
           />
         )}
+
+        {showConfirm && (
+          <ConfirmModal
+            title={
+              activeBoard.owner_id === userData.id
+                ? "Delete Board?"
+                : "Leave Board?"
+            }
+            message={
+              activeBoard.owner_id === userData.id
+                ? "This will permanently delete the board and all cards for everyone. This cannot be undone."
+                : "Are you sure you want to leave? You'll need an invite to get back in."
+            }
+            confirmText={
+              activeBoard.owner_id === userData.id
+                ? "Delete Everything"
+                : "Leave Board"
+            }
+            isDanger={true}
+            errorMessage={deleteError} // New Prop
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => {
+              setShowConfirm(false);
+              setDeleteError(""); // Reset error when they close it
+            }}
+          />
+        )}
       </div>
     </DragDropContext>
   );
@@ -649,6 +764,7 @@ FILE: ./frontend/src\components\Board.module.css
   display: flex;
   flex-direction: column;
   height: 100vh;
+  padding-right: 80px;
   width: calc(100vw - 260px);
   overflow: hidden;
   background-color: var(--bg-main); /* #121212 */
@@ -659,27 +775,42 @@ FILE: ./frontend/src\components\Board.module.css
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .headerMain {
   display: flex;
+  justify-content: space-between; /* This creates the big gap in the middle */
   align-items: center;
-  /* Changed from space-between to keep the group away from the User Menu on the right */
-  justify-content: flex-start;
   width: 100%;
 }
 
-.titleGroup {
+.contextGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem; /* Consistent breathing room between elements */
+  gap: 16px; /* Space between Title and Facepile */
 }
 
+.contextGroup h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* Consistent spacing between Count, Share, and Settings */
+}
+
+.totalCount {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 4px 12px;
+  border-radius: 20px; /* Use 20px for a 'pill' look or 6px for a square look */
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .shareBtn {
   display: flex;
   align-items: center;
@@ -696,7 +827,7 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .shareBtn:hover {
-  background: rgba(0, 245, 255, 0.08); /* Using your cyan variable */
+  background: rgba(0, 245, 255, 0.08);
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
   box-shadow: 0 0 15px rgba(0, 245, 255, 0.1);
@@ -704,18 +835,7 @@ FILE: ./frontend/src\components\Board.module.css
 }
 
 .shareBtn span {
-  font-size: 18px; /* Material icon size */
-}
-
-.totalCount {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 4px 12px;
-  border-radius: 6px; /* Matches button radius for a more consistent UI */
-  border: 1px solid var(--border-subtle);
-  font-weight: 600;
-  white-space: nowrap;
+  font-size: 18px;
 }
 
 .grid {
@@ -723,13 +843,12 @@ FILE: ./frontend/src\components\Board.module.css
   flex: 1;
   padding: 1.5rem;
   gap: 1.5rem;
-  overflow-x: auto; /* This allows horizontal scrolling if columns overflow */
-  overflow-y: hidden; /* Hide vertical scrollbar */
+  overflow-x: auto;
+  overflow-y: hidden;
   align-items: flex-start;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Custom scrollbar for that premium dark-mode feel */
 .grid::-webkit-scrollbar {
   height: 8px;
 }
@@ -737,6 +856,96 @@ FILE: ./frontend/src\components\Board.module.css
 .grid::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
+}
+
+/* --- NEW SETTINGS DROPDOWN STYLES --- */
+
+.settingsWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settingsTrigger {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+  padding: 4px;
+}
+
+.settingsTrigger:hover {
+  color: var(--accent-cyan);
+}
+
+.settingsDropdown {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 200px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settingsHeader {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.settingsHeader span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.settingsList {
+  padding: 8px;
+}
+
+.dangerAction {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: #ff4d4d;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+  text-align: left;
+}
+
+.dangerAction:hover {
+  background: rgba(255, 77, 77, 0.1);
+}
+
+.dangerAction .material-icons {
+  font-size: 1.2rem;
 }
 
 ==================================================
@@ -1053,6 +1262,372 @@ FILE: ./frontend/src\components\Column.module.css
   background-color: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   outline: 2px dashed rgba(255, 255, 255, 0.1);
+}
+
+==================================================
+FILE: ./frontend/src\components\ConfirmModal.jsx
+==================================================
+// frontend/src/components/ConfirmModal.jsx
+import React from "react";
+import styles from "./ConfirmModal.module.css";
+
+const ConfirmModal = ({
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmText = "Confirm",
+  isDanger = false,
+  errorMessage = "",
+}) => {
+  return (
+    <div className={styles.modalOverlay} onClick={onCancel}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2>{title}</h2>
+        </div>
+
+        <div className={styles.modalBody}>
+          <p>{message}</p>
+
+          {/* Moved the error message here so it stays inside the content flow */}
+          {errorMessage && <p className={styles.errorText}>{errorMessage}</p>}
+        </div>
+
+        <div className={styles.modalActions}>
+          <button className={styles.cancelBtn} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            className={isDanger ? styles.dangerBtn : styles.confirmBtn}
+            onClick={onConfirm}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ConfirmModal;
+
+==================================================
+FILE: ./frontend/src\components\ConfirmModal.module.css
+==================================================
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+  animation: fadeIn 0.2s ease;
+}
+
+.modalContent {
+  background: #181818;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 400px;
+  padding: 24px;
+}
+
+.modalHeader h2 {
+  margin: 0 0 16px 0;
+  font-size: 1.2rem;
+  color: #fff;
+}
+
+.modalBody p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.cancelBtn,
+.confirmBtn,
+.dangerBtn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-size: 0.9rem;
+}
+
+.cancelBtn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.confirmBtn {
+  background: var(--accent-cyan);
+  color: #000;
+}
+
+.dangerBtn {
+  background: #ff4d4d;
+  color: white;
+}
+
+.dangerBtn:hover {
+  background: #ff3333;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.errorText {
+  color: #ff4d4d;
+  background: rgba(255, 77, 77, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin-bottom: 15px;
+  border: 1px solid rgba(255, 77, 77, 0.2);
+}
+
+==================================================
+FILE: ./frontend/src\components\CreateBoardModal.jsx
+==================================================
+// frontend/src/components/CreateBoardModal.jsx
+import React, { useState } from "react";
+import api from "../api/client";
+import styles from "./CreateBoardModal.module.css";
+
+const CreateBoardModal = ({ onClose }) => {
+  const [title, setTitle] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      await api.post("/boards/", { title });
+
+      // We force the context to reload the sidebar so the new board appears
+      // (Assuming you have a way to refresh boards, or we just reload the page for V1)
+      onClose();
+    } catch (err) {
+      console.error("Failed to create board:", err);
+      setError("Failed to create board. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2>Create New Board</h2>
+          <button className={styles.closeBtn} onClick={onClose}>
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className={styles.modalBody}>
+          <div className={styles.inputGroup}>
+            <label>Board Title</label>
+            <input
+              type="text"
+              placeholder="e.g. Q3 Launch, Bug Tracker..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          {error && <p className={styles.errorMessage}>{error}</p>}
+
+          <div className={styles.modalActions}>
+            <button
+              type="button"
+              className={styles.cancelBtn}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={styles.submitBtn}
+              disabled={isSubmitting || !title.trim()}
+            >
+              {isSubmitting ? "Creating..." : "Create Board"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default CreateBoardModal;
+
+==================================================
+FILE: ./frontend/src\components\CreateBoardModal.module.css
+==================================================
+/* frontend/src/components/CreateBoardModal.module.css */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modalContent {
+  background: #111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 450px;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
+  position: relative;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  color: #ff4d4d;
+}
+
+.inputGroup {
+  margin-bottom: 20px;
+}
+
+.inputGroup label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.inputGroup input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.inputGroup input:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.05);
+  box-shadow: 0 0 15px rgba(0, 245, 255, 0.1);
+}
+
+.modalActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.cancelBtn,
+.submitBtn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.cancelBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+}
+
+.submitBtn {
+  background: var(--accent-cyan);
+  color: black;
+  border: none;
+}
+
+.submitBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 245, 255, 0.3);
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 ==================================================
@@ -2287,6 +2862,88 @@ FILE: ./frontend/src\components\Home.module.css
 }
 
 ==================================================
+FILE: ./frontend/src\components\MemberFacepile.jsx
+==================================================
+// frontend/src/components/MemberFacepile.jsx
+import React from "react";
+import UserAvatar from "./UserAvatar";
+import styles from "./MemberFacepile.module.css";
+
+const MemberFacepile = ({ members = [], owner }) => {
+  let allParticipants = [];
+
+  if (owner) {
+    allParticipants.push(owner);
+  }
+
+  const otherMembers = members.filter((m) => m.id !== owner?.id);
+  allParticipants = [...allParticipants, ...otherMembers];
+
+  const limit = 4;
+  const displayMembers = allParticipants.slice(0, limit);
+  const extraCount = allParticipants.length - limit;
+
+  return (
+    <div className={styles.facepile}>
+      {displayMembers.map((person) => (
+        <div key={person.id} className={styles.avatarWrapper}>
+          <UserAvatar
+            name={
+              person.full_name || `${person.first_name} ${person.last_name}`
+            }
+            size={28}
+          />
+        </div>
+      ))}
+
+      {extraCount > 0 && (
+        <div className={styles.extraBubble}>+{extraCount}</div>
+      )}
+    </div>
+  );
+};
+
+export default MemberFacepile;
+
+==================================================
+FILE: ./frontend/src\components\MemberFacepile.module.css
+==================================================
+/* frontend/src/components/MemberFacepile.module.css */
+.facepile {
+  display: flex;
+  align-items: center;
+  flex-direction: row-reverse; /* Leftmost member stays on top */
+  justify-content: flex-end;
+}
+
+.avatarWrapper {
+  margin-left: -10px; /* Overlap effect */
+  border-radius: 50%;
+  border: 2px solid var(--bg-main); /* Cut-out effect */
+  transition: transform 0.2s ease;
+}
+
+.avatarWrapper:hover {
+  transform: translateY(-4px);
+  z-index: 10;
+}
+
+.extraBubble {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: -10px;
+}
+
+==================================================
 FILE: ./frontend/src\components\ShareModal.jsx
 ==================================================
 // frontend/src/components/ShareModal.jsx
@@ -2627,38 +3284,56 @@ FILE: ./frontend/src\components\ShareModal.module.css
 ==================================================
 FILE: ./frontend/src\components\Sidebar.jsx
 ==================================================
+import { useState } from "react"; // Added missing import
 import { useBoards } from "../context/BoardContext";
+import CreateBoardModal from "./CreateBoardModal";
 import styles from "./Sidebar.module.css";
 
 function Sidebar() {
   const { boards, activeBoard, dispatch } = useBoards();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.topSection}>
-        <h1
-          className={styles.logo}
-          onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
-        >
-          Deploy
-        </h1>
+    <>
+      <aside className={styles.sidebar}>
+        <div className={styles.topSection}>
+          <h1
+            className={styles.logo}
+            onClick={() => dispatch({ type: "setActiveBoard", payload: null })}
+          >
+            Deploy
+          </h1>
 
-        <div className={styles.sectionHeader}>My Boards</div>
-        <nav className={styles.nav}>
-          {boards.map((board) => (
+          <div className={styles.sectionHeader}>
+            <span>My Boards</span>
             <button
-              key={board.id}
-              className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
-              onClick={() =>
-                dispatch({ type: "setActiveBoard", payload: board })
-              }
+              onClick={() => setIsCreateModalOpen(true)}
+              className={styles.addBoardBtn}
             >
-              {board.title}
+              +
             </button>
-          ))}
-        </nav>
-      </div>
-    </aside>
+          </div>
+          <nav className={styles.nav}>
+            {boards.map((board) => (
+              <button
+                key={board.id}
+                className={`${styles.navItem} ${activeBoard?.id === board.id ? styles.active : ""}`}
+                onClick={() =>
+                  dispatch({ type: "setActiveBoard", payload: board })
+                }
+              >
+                {board.title}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </aside>
+
+      {/* Render the modal outside the aside to prevent CSS clipping */}
+      {isCreateModalOpen && (
+        <CreateBoardModal onClose={() => setIsCreateModalOpen(false)} />
+      )}
+    </>
   );
 }
 
@@ -2667,10 +3342,12 @@ export default Sidebar;
 ==================================================
 FILE: ./frontend/src\components\Sidebar.module.css
 ==================================================
+/* frontend/src/components/Sidebar.module.css */
+
 .sidebar {
   display: flex;
   flex-direction: column;
-  justify-content: space-between; /* Pushes topSection and bottomSection apart */
+  justify-content: space-between;
   height: 100vh;
   padding: 1rem;
   background: var(--bg-secondary);
@@ -2685,19 +3362,60 @@ FILE: ./frontend/src\components\Sidebar.module.css
   margin-bottom: 2rem;
 }
 
+/* UPDATED: Changed to Flex to support the '+' button */
 .sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.5rem;
+  margin: 2rem 0 0.5rem 0; /* Adjusted margins for better alignment */
+  width: 100%;
+}
+
+.sectionHeader span {
+  flex: 1;
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  margin: 2rem 0 0.5rem 1rem; /* Space it out from the Logo */
   opacity: 0.6;
+}
+
+/* NEW: The creation button style */
+.addBoardBtn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  padding-bottom: 2px; /* Optical alignment for the '+' character */
+}
+
+.addBoardBtn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.05);
+  transform: scale(1.1);
 }
 
 .logo {
   cursor: pointer;
   transition: opacity 0.2s;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text-primary);
 }
 
 .logo:hover {
@@ -2708,7 +3426,7 @@ FILE: ./frontend/src\components\Sidebar.module.css
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 2rem;
+  margin-top: 1rem; /* Reduced slightly since header has margin */
 }
 
 .navItem {
@@ -2748,7 +3466,7 @@ FILE: ./frontend/src\components\Sidebar.module.css
 }
 
 .logoutBtn:hover {
-  background: #ff4d4d22; /* Faint red glow */
+  background: #ff4d4d22;
   color: #ff4d4d;
   border-color: #ff4d4d;
 }
@@ -3471,7 +4189,11 @@ function reducer(state, action) {
     case "boardsLoaded":
       return { ...state, boards: action.payload, status: "ready" };
     case "setActiveBoard":
-      return { ...state, activeBoard: action.payload, cards: [] };
+      return {
+        ...state,
+        activeBoard: action.payload,
+        cards: state.activeBoard?.id === action.payload?.id ? state.cards : [],
+      };
     case "setCards":
       return { ...state, cards: action.payload, status: "ready" };
     case "selectCard":
@@ -3505,19 +4227,20 @@ function BoardProvider({ children }) {
 
   useEffect(() => {
     // Only fetch if we are actually logged in
-    if (state.isAuthenticated && state.userData?.id) {
+    if (state.isAuthenticated) {
       async function loadBoards() {
         dispatch({ type: "loading" });
         try {
-          const data = await getBoards(state.userData.id);
+          const data = await getBoards();
           dispatch({ type: "boardsLoaded", payload: data });
-        } catch {
+        } catch (err) {
+          console.error("Board Load Error:", err);
           dispatch({ type: "error" });
         }
       }
       loadBoards();
     }
-  }, [state.isAuthenticated, state.userData?.id]); // This trigger is the magic part
+  }, [state.isAuthenticated]); // This trigger is the magic part
 
   // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {
@@ -3578,12 +4301,23 @@ function BoardProvider({ children }) {
       // dispatch({ type: "addNotification", payload: notif });
     });
 
+    socket.on("refresh_boards", async () => {
+      console.log("Real-time board refresh triggered!");
+      try {
+        const data = await getBoards();
+        dispatch({ type: "boardsLoaded", payload: data });
+      } catch (err) {
+        console.error("Failed to sync boards:", err);
+      }
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");
       socket.off("card_created");
       socket.off("new_notification");
+      socket.off("refresh_boards");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 
@@ -4036,14 +4770,31 @@ async def create_new_board(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
+    from sqlalchemy.orm import selectinload
+    
     new_board = models.Board(
         title=board_in.title,
-        owner_id=current_user.id  # Automatically sets the owner to YOU
+        owner_id=current_user.id
     )
     db.add(new_board)
     await db.commit()
-    await db.refresh(new_board)
-    return new_board
+    
+    # RE-QUERY with selectinload to satisfy the schema's member requirement
+    query = (
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == new_board.id)
+    )
+    result = await db.execute(query)
+    board_with_data = result.scalar_one()
+
+    # Trigger the real-time sync
+    try:
+        await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+    except Exception as e:
+        print(f"Socket error: {e}")
+
+    return board_with_data
 
 @app.post("/cards/")
 async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
@@ -4078,12 +4829,11 @@ async def get_my_boards(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Fetches all boards where the user is either the Owner 
-    OR a Member (via the association table).
-    """
+    from sqlalchemy.orm import selectinload
+    
     query = (
         select(models.Board)
+        .options(selectinload(models.Board.members)) # ADD THIS for the facepile!
         .outerjoin(models.board_members)
         .where(
             (models.Board.owner_id == current_user.id) | 
@@ -4092,8 +4842,35 @@ async def get_my_boards(
     )
     
     result = await db.execute(query)
-    # unique() is required when joining to prevent duplicate board objects in the result
     return result.scalars().unique().all()
+
+# backend/app/main.py
+
+@app.get("/boards/{board_id}", response_model=schemas.BoardResponse)
+async def get_board_details(
+    board_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from sqlalchemy.orm import selectinload
+    # 1. Fetch board and explicitly include the members relationship
+    query = (
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == board_id)
+    )
+    result = await db.execute(query)
+    board = result.scalar_one_or_none()
+    
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+        
+    # 2. Security Check: Ensure user is owner or member
+    member_ids = [m.id for m in board.members]
+    if board.owner_id != current_user.id and current_user.id not in member_ids:
+        raise HTTPException(status_code=403, detail="Not a member of this board")
+
+    return board
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -4158,13 +4935,6 @@ async def update_card_status(card_id: int, new_status: str, db: AsyncSession = D
     }, room=str(updated_card.board_id))
 
     return updated_card
-
-@app.delete("/boards/{board_id}/")
-async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
-    success = await crud.delete_board(db, board_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Board not found")
-    return {"message": f"Board {board_id} and its cards deleted successfully"}
 
 @app.delete("/cards/{card_id}")
 async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
@@ -4527,6 +5297,8 @@ async def accept_invitation(
     
     try:
         await db.commit()
+        await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+
         return {"message": "Successfully joined the board", "board_id": board.id}
     except Exception as e:
         await db.rollback()
@@ -4566,6 +5338,59 @@ async def decline_invitation(
     await db.commit()
     
     return {"message": "Invitation declined"}
+
+@app.delete("/boards/{board_id}")
+async def delete_board(
+    board_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from sqlalchemy.orm import selectinload
+    
+    # 1. Fetch board with members PRE-LOADED to avoid Greenlet errors
+    query = await db.execute(
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == board_id)
+    )
+    board = query.scalar_one_or_none()
+
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    # 2. Store info for notifications before database actions
+    owner_id = board.owner_id
+    member_ids = [m.id for m in board.members]
+
+    # --- CASE A: OWNER DELETES BOARD ---
+    if owner_id == current_user.id:
+        await db.delete(board)
+        await db.commit()
+
+        # Notify everyone via socket safely
+        try:
+            await sio.emit("refresh_boards", {}, room=f"user_{owner_id}")
+            for m_id in member_ids:
+                await sio.emit("refresh_boards", {}, room=f"user_{m_id}")
+        except Exception as e:
+            print(f"Socket emit failed: {e}")
+
+        return {"message": "Board and all its cards have been deleted"}
+
+    # --- CASE B: MEMBER LEAVES BOARD ---
+    if current_user in board.members:
+        board.members.remove(current_user)
+        await db.commit()
+        
+        # Notify the user who left to refresh their sidebar
+        try:
+            await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+        except Exception as e:
+            print(f"Socket emit failed: {e}")
+            
+        return {"message": "You have left the board"}
+    
+    raise HTTPException(status_code=403, detail="You do not have permission to modify this board")
 ==================================================
 FILE: .\backend\app\models.py
 ==================================================
@@ -4752,6 +5577,7 @@ class BoardCreate(BoardBase):
 class BoardResponse(BoardBase):
     id: int
     owner_id: int
+    members: List[UserResponse] = []
 
     class Config:
         from_attributes = True

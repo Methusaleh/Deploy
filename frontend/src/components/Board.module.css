@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  padding-right: 80px;
   width: calc(100vw - 260px);
   overflow: hidden;
   background-color: var(--bg-main); /* #121212 */
@@ -12,26 +13,42 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .headerMain {
   display: flex;
+  justify-content: space-between; /* This creates the big gap in the middle */
   align-items: center;
-  justify-content: flex-start;
   width: 100%;
 }
 
-.titleGroup {
+.contextGroup {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 16px; /* Space between Title and Facepile */
 }
 
+.contextGroup h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* Consistent spacing between Count, Share, and Settings */
+}
+
+.totalCount {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 4px 12px;
+  border-radius: 20px; /* Use 20px for a 'pill' look or 6px for a square look */
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .shareBtn {
   display: flex;
   align-items: center;
@@ -57,17 +74,6 @@
 
 .shareBtn span {
   font-size: 18px;
-}
-
-.totalCount {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .grid {

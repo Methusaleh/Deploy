@@ -1,12 +1,18 @@
 import { useEffect, useState, useRef } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { useBoards } from "../context/BoardContext";
-import { getBoardCards, updateCard, deleteOrLeaveBoard } from "../api/boards";
+import {
+  getBoardCards,
+  updateCard,
+  deleteOrLeaveBoard,
+  getBoardDetails,
+} from "../api/boards";
 import Column from "./Column";
 import styles from "./Board.module.css";
 import Home from "./Home";
 import ShareModal from "./ShareModal";
 import ConfirmModal from "./ConfirmModal";
+import MemberFacepile from "./MemberFacepile";
 
 function Board() {
   const { activeBoard, cards, status, dispatch, userData } = useBoards();
@@ -28,25 +34,35 @@ function Board() {
     { id: "deploy", title: "Deploy" },
   ];
 
-  useEffect(
-    function () {
-      if (!id) return;
+  // Inside Board.jsx useEffect
+  const lastFetchedId = useRef(null);
 
-      async function fetchCards() {
-        try {
-          dispatch({ type: "loading" });
-          const data = await getBoardCards(id);
-          dispatch({ type: "setCards", payload: data });
-        } catch (err) {
-          console.error("Board Fetch Error:", err);
-          dispatch({ type: "error", payload: err.message });
-        }
+  useEffect(() => {
+    if (!id) return;
+
+    // If we've already fetched the details for THIS board ID, stop here.
+    if (lastFetchedId.current === id) return;
+
+    async function fetchBoardAndCards() {
+      try {
+        // 1. Fetch details
+        const boardData = await getBoardDetails(id);
+
+        // 2. Mark this ID as 'done' before updating state
+        lastFetchedId.current = id;
+
+        dispatch({ type: "setActiveBoard", payload: boardData });
+
+        // 3. Fetch cards
+        const cardData = await getBoardCards(id);
+        dispatch({ type: "setCards", payload: cardData });
+      } catch (err) {
+        console.error("Board Fetch Error:", err);
       }
+    }
 
-      fetchCards();
-    },
-    [id, dispatch],
-  );
+    fetchBoardAndCards();
+  }, [id, dispatch]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -135,8 +151,18 @@ function Board() {
       <div className={styles.boardContainer}>
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <div className={styles.titleGroup}>
+            <div className={styles.contextGroup}>
               <h1>{activeBoard.title}</h1>
+              <MemberFacepile
+                members={activeBoard.members}
+                owner={activeBoard.owner_id === userData?.id ? userData : null}
+              />
+            </div>
+            <div className={styles.actionGroup}>
+              <div className={styles.totalCount}>
+                {cards.length} {cards.length === 1 ? "Card" : "Cards"}
+              </div>
+
               <button
                 className={styles.shareBtn}
                 onClick={() => setIsShareModalOpen(true)}
@@ -144,6 +170,7 @@ function Board() {
                 <span className="material-icons">person_add</span>
                 <span>Share</span>
               </button>
+
               <div className={styles.settingsWrapper} ref={menuRef}>
                 <button
                   className={styles.settingsTrigger}
@@ -181,7 +208,6 @@ function Board() {
                   </div>
                 )}
               </div>
-              <div className={styles.totalCount}>{cards.length} Cards</div>
             </div>
           </div>
         </header>

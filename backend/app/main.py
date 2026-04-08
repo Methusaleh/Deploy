@@ -200,14 +200,31 @@ async def create_new_board(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
+    from sqlalchemy.orm import selectinload
+    
     new_board = models.Board(
         title=board_in.title,
-        owner_id=current_user.id  # Automatically sets the owner to YOU
+        owner_id=current_user.id
     )
     db.add(new_board)
     await db.commit()
-    await db.refresh(new_board)
-    return new_board
+    
+    # RE-QUERY with selectinload to satisfy the schema's member requirement
+    query = (
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == new_board.id)
+    )
+    result = await db.execute(query)
+    board_with_data = result.scalar_one()
+
+    # Trigger the real-time sync
+    try:
+        await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+    except Exception as e:
+        print(f"Socket error: {e}")
+
+    return board_with_data
 
 @app.post("/cards/")
 async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
@@ -242,12 +259,11 @@ async def get_my_boards(
     current_user: models.User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Fetches all boards where the user is either the Owner 
-    OR a Member (via the association table).
-    """
+    from sqlalchemy.orm import selectinload
+    
     query = (
         select(models.Board)
+        .options(selectinload(models.Board.members)) # ADD THIS for the facepile!
         .outerjoin(models.board_members)
         .where(
             (models.Board.owner_id == current_user.id) | 
@@ -256,8 +272,35 @@ async def get_my_boards(
     )
     
     result = await db.execute(query)
-    # unique() is required when joining to prevent duplicate board objects in the result
     return result.scalars().unique().all()
+
+# backend/app/main.py
+
+@app.get("/boards/{board_id}", response_model=schemas.BoardResponse)
+async def get_board_details(
+    board_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from sqlalchemy.orm import selectinload
+    # 1. Fetch board and explicitly include the members relationship
+    query = (
+        select(models.Board)
+        .options(selectinload(models.Board.members))
+        .where(models.Board.id == board_id)
+    )
+    result = await db.execute(query)
+    board = result.scalar_one_or_none()
+    
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+        
+    # 2. Security Check: Ensure user is owner or member
+    member_ids = [m.id for m in board.members]
+    if board.owner_id != current_user.id and current_user.id not in member_ids:
+        raise HTTPException(status_code=403, detail="Not a member of this board")
+
+    return board
 
 @app.get("/boards/{board_id}/cards/")
 async def read_board_cards(board_id: int, db: AsyncSession = Depends(get_db)):
@@ -322,13 +365,6 @@ async def update_card_status(card_id: int, new_status: str, db: AsyncSession = D
     }, room=str(updated_card.board_id))
 
     return updated_card
-
-@app.delete("/boards/{board_id}/")
-async def delete_board(board_id: int, db: AsyncSession = Depends(get_db)):
-    success = await crud.delete_board(db, board_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Board not found")
-    return {"message": f"Board {board_id} and its cards deleted successfully"}
 
 @app.delete("/cards/{card_id}")
 async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
@@ -691,6 +727,8 @@ async def accept_invitation(
     
     try:
         await db.commit()
+        await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+
         return {"message": "Successfully joined the board", "board_id": board.id}
     except Exception as e:
         await db.rollback()
@@ -731,16 +769,15 @@ async def decline_invitation(
     
     return {"message": "Invitation declined"}
 
-# backend/app/main.py
-
 @app.delete("/boards/{board_id}")
-async def delete_or_leave_board(
+async def delete_board(
     board_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     from sqlalchemy.orm import selectinload
-    # 1. Fetch board with members loaded
+    
+    # 1. Fetch board with members PRE-LOADED to avoid Greenlet errors
     query = await db.execute(
         select(models.Board)
         .options(selectinload(models.Board.members))
@@ -751,52 +788,36 @@ async def delete_or_leave_board(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    # CASE A: Current User is Owner -> Fully DELETE
-    if board.owner_id == current_user.id:
+    # 2. Store info for notifications before database actions
+    owner_id = board.owner_id
+    member_ids = [m.id for m in board.members]
+
+    # --- CASE A: OWNER DELETES BOARD ---
+    if owner_id == current_user.id:
         await db.delete(board)
         await db.commit()
-        return {"message": "Board deleted successfully", "action": "deleted"}
 
-    # CASE B: Current User is Member -> LEAVE
+        # Notify everyone via socket safely
+        try:
+            await sio.emit("refresh_boards", {}, room=f"user_{owner_id}")
+            for m_id in member_ids:
+                await sio.emit("refresh_boards", {}, room=f"user_{m_id}")
+        except Exception as e:
+            print(f"Socket emit failed: {e}")
+
+        return {"message": "Board and all its cards have been deleted"}
+
+    # --- CASE B: MEMBER LEAVES BOARD ---
     if current_user in board.members:
         board.members.remove(current_user)
         await db.commit()
-        return {"message": "You have left the board", "action": "left"}
-
-    raise HTTPException(status_code=403, detail="Not authorized to perform this action")
-
-@app.delete("/boards/{board_id}/members/{user_id}")
-async def remove_member(
-    board_id: int,
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    from sqlalchemy.orm import selectinload
-    query = await db.execute(
-        select(models.Board)
-        .options(selectinload(models.Board.members))
-        .where(models.Board.id == board_id)
-    )
-    board = query.scalar_one_or_none()
-
-    if not board:
-        raise HTTPException(status_code=404, detail="Board not found")
-
-    # Only Owner can remove others
-    if board.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the owner can remove members")
-
-    # Cannot remove yourself via this route (use the /leave logic)
-    if user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="Use the leave button to remove yourself")
-
-    user_query = await db.execute(select(models.User).where(models.User.id == user_id))
-    user_to_remove = user_query.scalar_one_or_none()
-
-    if user_to_remove and user_to_remove in board.members:
-        board.members.remove(user_to_remove)
-        await db.commit()
-        return {"message": "User removed from board"}
-
-    raise HTTPException(status_code=404, detail="User not found on this board")
+        
+        # Notify the user who left to refresh their sidebar
+        try:
+            await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
+        except Exception as e:
+            print(f"Socket emit failed: {e}")
+            
+        return {"message": "You have left the board"}
+    
+    raise HTTPException(status_code=403, detail="You do not have permission to modify this board")

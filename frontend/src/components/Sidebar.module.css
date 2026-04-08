@@ -25,9 +25,11 @@
   align-items: center;
   padding: 0 0.5rem;
   margin: 2rem 0 0.5rem 0; /* Adjusted margins for better alignment */
+  width: 100%;
 }
 
 .sectionHeader span {
+  flex: 1;
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-secondary);
@@ -38,6 +40,7 @@
 
 /* NEW: The creation button style */
 .addBoardBtn {
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);

@@ -70,6 +70,7 @@ class BoardCreate(BoardBase):
 class BoardResponse(BoardBase):
     id: int
     owner_id: int
+    members: List[UserResponse] = []
 
     class Config:
         from_attributes = True
