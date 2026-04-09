@@ -99,6 +99,30 @@ async def connect(sid, environ):
     print(f"Client connected: {sid}")
 
 @sio.event
+async def heartbeat(sid, data):
+    user_id = data.get("user_id")
+    board_id = data.get("board_id") # Capture the board context
+    if not user_id:
+        return
+
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSession(engine) as db:
+        await db.execute(
+            update(models.User)
+            .where(models.User.id == user_id)
+            .values(last_seen=now)
+        )
+        await db.commit()
+
+    # BROADCAST: Tell everyone on this board that this user is active
+    if board_id:
+        await sio.emit("presence_update", {
+            "user_id": user_id,
+            "last_seen": now.isoformat()
+        }, room=str(board_id))
+
+@sio.event
 async def join_board(sid, board_id):
     await sio.enter_room(sid, str(board_id))
     print(f"Client {sid} joined board {board_id}")

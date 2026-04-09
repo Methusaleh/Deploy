@@ -879,13 +879,15 @@ FILE: ./frontend/src\components\Card.jsx
 ==================================================
 import { Draggable } from "@hello-pangea/dnd";
 import { useBoards } from "../context/BoardContext";
+import UserAvatar from "./UserAvatar";
 import styles from "./Card.module.css";
 
 function Card({ card, index }) {
-  const { dispatch } = useBoards();
+  const { dispatch, activeBoard } = useBoards();
 
   // Normalize priority for the CSS class (defaults to 'low')
   const priorityClass = card.priority?.toLowerCase() || "low";
+  const assignee = activeBoard?.members?.find((m) => m.id === card.assigned_to);
 
   return (
     <Draggable draggableId={card.id.toString()} index={index}>
@@ -908,6 +910,29 @@ function Card({ card, index }) {
             {card.description && (
               <p className={styles.description}>{card.description}</p>
             )}
+
+            <div className={styles.cardFooter}>
+              <div className={styles.metaInfo}>
+                {card.due_date && (
+                  <span className={styles.dateBadge}>
+                    <span className="material-icons">event</span>
+                    {new Date(card.due_date).toLocaleDateString([], {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                )}
+              </div>
+
+              {assignee && (
+                <div className={styles.assigneeAvatar}>
+                  <UserAvatar
+                    name={`${assignee.first_name} ${assignee.last_name}`}
+                    size={22}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1020,6 +1045,54 @@ FILE: ./frontend/src\components\Card.module.css
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
   border-color: var(--accent-cyan) !important;
   transform: rotate(2deg); /* Gives it that 'picked up' feel */
+}
+
+/* --- FOOTER & META INFO --- */
+
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem; /* Space between description and footer */
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.metaInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dateBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.dateBadge .material-icons {
+  font-size: 14px;
+}
+
+.assigneeAvatar {
+  display: flex;
+  align-items: center;
+  /* Adds a subtle ring to the avatar to make it pop against the card bg */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  padding: 1px;
+  transition: transform 0.2s ease;
+}
+
+.assigneeAvatar:hover {
+  transform: scale(1.1);
+  border-color: var(--accent-cyan);
 }
 
 ==================================================
@@ -1603,6 +1676,10 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   const [description, setDescription] = useState(
     selectedCard.description || "",
   );
+  const [assignedTo, setAssignedTo] = useState(selectedCard?.assigned_to || "");
+  const [dueDate, setDueDate] = useState(
+    selectedCard?.due_date ? selectedCard.due_date.split("T")[0] : "",
+  );
   const [priority, setPriority] = useState(selectedCard.priority || "low");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -1756,21 +1833,23 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     setSaveStatus("saving");
     try {
       let result;
+      const cardData = {
+        title,
+        description,
+        priority,
+        assigned_to: assignedTo === "" ? null : parseInt(assignedTo),
+        due_date: dueDate === "" ? null : dueDate,
+      };
+
       if (isNew) {
         result = await createCard({
-          title,
-          description,
-          priority,
+          ...cardData,
           status: selectedCard.status,
           board_id: activeBoard.id,
         });
         dispatch({ type: "setCards", payload: [...cards, result] });
       } else {
-        result = await updateCard(selectedCard.id, {
-          title,
-          description,
-          priority,
-        });
+        result = await updateCard(selectedCard.id, cardData);
         const updatedCards = cards.map((c) =>
           c.id === result.id ? result : c,
         );
@@ -1790,7 +1869,36 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   return (
     <div className={styles.content}>
       <span className={styles.statusBadge}>{selectedCard.status}</span>
+      {/* 1. Only Assignee and Due Date go in the 2-column grid */}
+      <div className={styles.metaRow}>
+        <div className={styles.editGroup}>
+          <label className={styles.label}>Assignee</label>
+          <select
+            className={styles.prioritySelect}
+            value={assignedTo}
+            onChange={(e) => setAssignedTo(e.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {activeBoard?.members?.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.first_name} {m.last_name}
+              </option>
+            ))}
+          </select>
+        </div>
 
+        <div className={styles.editGroup}>
+          <label className={styles.label}>Due Date</label>
+          <input
+            type="date"
+            className={styles.dateInput}
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+        </div>
+      </div>{" "}
+      {/* <--- CLOSE METAROW HERE */}
+      {/* 2. Everything else stacks vertically outside the grid */}
       <div className={styles.editGroup}>
         <label className={styles.label}>Priority</label>
         <select
@@ -1803,7 +1911,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           <option value="high">High</option>
         </select>
       </div>
-
       <div className={styles.editGroup}>
         <label className={styles.label}>Title</label>
         <input
@@ -1814,7 +1921,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           autoFocus={isNew}
         />
       </div>
-
       <div className={styles.editGroup}>
         <label className={styles.label}>Description</label>
         <textarea
@@ -1824,7 +1930,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           placeholder="Add a more detailed description..."
         />
       </div>
-
       <div className={styles.actionRow}>
         <button
           className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
@@ -1848,7 +1953,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           </button>
         )}
       </div>
-
       {!isNew && (
         <div className={styles.commentSection}>
           <h4 className={styles.activityTitle}>Activity</h4>
@@ -1928,13 +2032,10 @@ FILE: ./frontend/src\components\Drawer.module.css
   height: 100vh;
   background-color: #181818;
   border-left: 1px solid var(--border-subtle);
-  z-index: 1000;
+  z-index: 9999;
   padding: 2rem;
-  /* Start off-screen */
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Flex settings to allow internal scrolling */
   display: flex;
   flex-direction: column;
 }
@@ -1953,7 +2054,7 @@ FILE: ./frontend/src\components\Drawer.module.css
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
-  z-index: 999;
+  z-index: 9998;
 }
 
 .overlay.show {
@@ -1961,11 +2062,11 @@ FILE: ./frontend/src\components\Drawer.module.css
   pointer-events: auto;
 }
 
-/* --- 2. HEADER & LAYOUT WRAPPER --- */
+/* --- 2. HEADER --- */
 .header {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .closeBtn {
@@ -1980,11 +2081,10 @@ FILE: ./frontend/src\components\Drawer.module.css
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto; /* Fallback scrolling for the whole content area */
+  overflow-y: auto;
   padding-right: 4px;
 }
 
-/* Custom scrollbar for the main content area */
 .content::-webkit-scrollbar {
   width: 4px;
 }
@@ -1996,6 +2096,8 @@ FILE: ./frontend/src\components\Drawer.module.css
 /* --- 3. FORM ELEMENTS --- */
 .editGroup {
   margin-bottom: 1.5rem;
+  width: 100%;
+  display: block;
 }
 
 .label {
@@ -2004,145 +2106,142 @@ FILE: ./frontend/src\components\Drawer.module.css
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 1px;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
 }
 
 .statusBadge {
   display: inline-block;
-  padding: 4px 10px;
-  background-color: var(--border-subtle);
-  color: var(--text-secondary);
+  width: fit-content;
+  padding: 4px 12px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 245, 255, 0.3);
   border-radius: 4px;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   margin-bottom: 1.5rem;
-  cursor: default;
-  user-select: none;
 }
 
-.titleInput {
+/* Unified Base for Inputs */
+.titleInput,
+.descInput,
+.prioritySelect,
+.dateInput {
   width: 100%;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: 1.5rem;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
   color: var(--text-primary);
   outline: none;
-  padding: 4px 8px;
-  margin-left: -8px;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
 }
 
-.titleInput:focus {
-  background-color: rgba(255, 255, 255, 0.05);
+.titleInput:focus,
+.descInput:focus,
+.prioritySelect:focus,
+.dateInput:focus {
+  background-color: rgba(255, 255, 255, 0.08);
   border-color: var(--accent-cyan);
 }
 
+.titleInput {
+  font-size: 1.3rem;
+  font-weight: 600;
+  padding: 10px 14px;
+}
+
 .descInput {
-  width: 100%;
-  height: 120px;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  padding: 0.8rem;
-  color: var(--text-secondary);
+  min-height: 200px;
+  padding: 1rem;
   font-size: 0.95rem;
   line-height: 1.6;
-  resize: none;
-  outline: none;
+  resize: vertical;
 }
 
-.prioritySelect {
-  width: 100%;
-  padding: 0.6rem;
-  background-color: #222;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: 4px;
+/* Specifics for Dropdowns and Date */
+.prioritySelect,
+.dateInput {
+  padding: 10px 12px;
+  font-size: 0.9rem;
   cursor: pointer;
-  outline: none;
+  background-color: #222; /* Solid background for visibility */
 }
 
-.prioritySelect option[value="high"] {
-  color: #ff007f;
+.dateInput::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 1;
 }
-.prioritySelect option[value="medium"] {
-  color: #39ff14;
+
+.prioritySelect option {
+  background-color: #181818;
+  color: white;
 }
-.prioritySelect option[value="low"] {
-  color: var(--accent-cyan);
+
+.metaRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* --- 4. ACTION BUTTONS --- */
 .actionRow {
   display: flex;
   gap: 12px;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.saveBtn,
+.deleteBtn {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .saveBtn {
   flex: 2;
-  padding: 0.8rem;
   background-color: var(--accent-cyan);
   color: #121212;
   border: none;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background-color: #00d8e6;
 }
 
 .saveBtn.saved {
   background-color: #39ff14 !important;
   color: #000 !important;
-  box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
 }
 
 .deleteBtn {
   flex: 1;
   background: transparent;
-  border: 1px solid #444;
+  border: 1px solid #333;
   color: #888;
-  padding: 0.6rem;
-  font-size: 0.8rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.4s ease;
 }
 
 .deleteBtn:hover {
   border-color: #ff4444;
   color: #ff4444;
+  background: rgba(255, 68, 68, 0.05);
 }
 
-.confirmDelete {
-  background-color: #ff4444 !important;
-  color: white !important;
-  animation: pulseRed 1.5s infinite;
-}
-
-@keyframes pulseRed {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
-  }
-}
-
-/* --- 5. ACTIVITY / COMMENT SECTION --- */
+/* --- 5. ACTIVITY / COMMENTS --- */
 .commentSection {
-  margin-top: 2.5rem;
+  margin-top: 1rem;
   border-top: 1px solid var(--border-subtle);
   padding-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .activityTitle {
@@ -2158,31 +2257,25 @@ FILE: ./frontend/src\components\Drawer.module.css
   overflow-y: auto;
   margin-bottom: 1.5rem;
   padding-right: 8px;
-  scroll-behavior: smooth;
-  display: flex;
-  flex-direction: column; /* Supports newest-at-top natively if mapped that way */
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-cyan) transparent;
 }
 
 .commentList::-webkit-scrollbar {
   width: 5px;
 }
+
 .commentList::-webkit-scrollbar-thumb {
   background: var(--accent-cyan);
   border-radius: 10px;
+  box-shadow: 0 0 5px var(--accent-cyan);
 }
 
 .commentItem {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
   padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.commentHeader {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  border-radius: 6px;
+  margin-bottom: 10px;
 }
 
 .commentAuthor {
@@ -2191,37 +2284,27 @@ FILE: ./frontend/src\components\Drawer.module.css
   color: var(--accent-cyan);
 }
 
-.commentTime {
-  font-size: 0.75rem;
-  color: #666;
-}
-
 .commentContent {
   font-size: 0.9rem;
-  margin: 0;
+  margin: 4px 0 0 0;
   color: var(--text-primary);
-  line-height: 1.4;
 }
 
-/* --- 6. MENTIONS & AUTOCOMPLETE --- */
-.commentFormWrapper {
-  position: relative;
-}
-
+/* --- 6. MENTIONS & INPUT --- */
 .commentForm {
   display: flex;
-  gap: 10px;
-  margin-bottom: 1rem;
+  gap: 8px;
 }
 
 .commentForm input {
   flex: 1;
-  padding: 12px;
+  padding: 10px 14px;
   background: #111;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid #333;
   color: white;
   border-radius: 6px;
   outline: none;
+  font-size: 0.9rem;
 }
 
 .commentForm input:focus {
@@ -2229,73 +2312,16 @@ FILE: ./frontend/src\components\Drawer.module.css
 }
 
 .commentForm button {
-  background: var(--border-subtle);
+  background: #333;
   color: white;
   border: none;
-  padding: 0 15px;
+  padding: 0 16px;
   border-radius: 6px;
   font-weight: bold;
   cursor: pointer;
 }
 
 .commentForm button:not(:disabled) {
-  background: var(--accent-cyan);
-  color: #000;
-}
-
-.suggestionList {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  width: 100%;
-  background: #222;
-  border: 1px solid var(--accent-cyan);
-  border-radius: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 10;
-  margin-bottom: 8px;
-  box-shadow: 0 -5px 25px rgba(0, 0, 0, 0.6);
-}
-
-.suggestionItem {
-  padding: 10px 15px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  border-bottom: 1px solid #333;
-  transition: all 0.2s ease;
-}
-
-/* Keyboard Navigation Highlight */
-.suggestionItem:hover,
-.activeSuggestion {
-  background: rgba(0, 245, 255, 0.1) !important;
-  border-left: 4px solid var(--accent-cyan);
-}
-
-.activeSuggestion .suggestName {
-  color: var(--accent-cyan);
-}
-
-.suggestName {
-  font-weight: bold;
-  font-size: 0.85rem;
-  color: var(--text-primary);
-}
-
-.suggestHandle {
-  font-size: 0.75rem;
-  color: var(--accent-cyan);
-  background: rgba(0, 255, 255, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-/* Swapping handle colors when item is active */
-.activeSuggestion .suggestHandle {
   background: var(--accent-cyan);
   color: #000;
 }
@@ -2792,10 +2818,13 @@ FILE: ./frontend/src\components\MemberFacepile.jsx
 ==================================================
 // frontend/src/components/MemberFacepile.jsx
 import React from "react";
+import { useBoards } from "../context/BoardContext";
 import UserAvatar from "./UserAvatar";
 import styles from "./MemberFacepile.module.css";
 
 const MemberFacepile = ({ members = [], owner }) => {
+  const { isUserActive } = useBoards();
+
   let allParticipants = [];
 
   if (owner) {
@@ -2817,6 +2846,8 @@ const MemberFacepile = ({ members = [], owner }) => {
             name={
               person.full_name || `${person.first_name} ${person.last_name}`
             }
+            // 3. Now isUserActive is defined and usable!
+            isActive={isUserActive(person.last_seen)}
             size={28}
           />
         </div>
@@ -3413,7 +3444,7 @@ const COLORS = [
   "#7c3aed", // Violet
 ];
 
-const UserAvatar = ({ name, size = 40 }) => {
+const UserAvatar = ({ name, size = 40, isActive = false }) => {
   // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
   const getInitials = (str) => {
     if (!str) return "?";
@@ -3442,8 +3473,16 @@ const UserAvatar = ({ name, size = 40 }) => {
   };
 
   return (
-    <div className={styles.avatar} style={dynamicStyle} title={name}>
-      {getInitials(name)}
+    <div
+      className={styles.container}
+      style={{ width: `${size}px`, height: `${size}px` }}
+    >
+      <div className={styles.avatar} style={dynamicStyle} title={name}>
+        {getInitials(name)}
+      </div>
+
+      {/* The Presence Glow */}
+      {isActive && <div className={styles.indicator} />}
     </div>
   );
 };
@@ -3454,6 +3493,13 @@ export default UserAvatar;
 FILE: ./frontend/src\components\UserAvatar.module.css
 ==================================================
 /* frontend/src/components/UserAvatar.module.css */
+.container {
+  position: relative;
+  display: inline-flex;
+  /* Ensure the dot can 'hang' off the edge */
+  overflow: visible !important;
+}
+
 .avatar {
   border-radius: 50%;
   display: flex;
@@ -3461,14 +3507,27 @@ FILE: ./frontend/src\components\UserAvatar.module.css
   justify-content: center;
   color: white;
   font-weight: 600;
-  user-select: none;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  transition: transform 0.2s ease;
+  /* Make sure this is NOT hidden */
+  overflow: visible;
 }
 
 .avatar:hover {
   transform: scale(1.05);
   cursor: default;
+}
+
+.indicator {
+  position: absolute;
+  /* Nudge it slightly into the corner */
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #39ff14; /* Neon Green */
+  border-radius: 50%;
+  border: 2px solid #181818;
+  box-shadow: 0 0 10px #39ff14;
+  z-index: 10;
 }
 
 ==================================================
@@ -3787,7 +3846,12 @@ const UserMenu = ({ onLogout }) => {
         }}
       >
         <UserAvatar
-          name={`${userData.first_name} ${userData.last_name}`}
+          name={
+            userData
+              ? `${userData.first_name} ${userData.last_name}`
+              : "Aaron Kipf"
+          }
+          isActive={true} // You are always active if you are looking at your own menu!
           size={36}
         />
       </div>
@@ -3796,7 +3860,9 @@ const UserMenu = ({ onLogout }) => {
         <div className={styles.dropdown}>
           <div className={styles.userInfo}>
             <p className={styles.userName}>
-              {`${userData.first_name} ${userData.last_name}`}
+              {userData
+                ? `${userData.first_name} ${userData.last_name}`
+                : "Guest User"}
             </p>
             <p className={styles.userRole}>Lead Developer</p>
           </div>
@@ -4106,6 +4172,22 @@ const initialState = {
   userData: null,
 };
 
+export const isUserActive = (lastSeen) => {
+  if (!lastSeen) return false;
+
+  // Ensure we append 'Z' if it's missing to force UTC parsing
+  const formattedLastSeen = lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`;
+  const lastSeenDate = new Date(formattedLastSeen);
+  const now = new Date();
+
+  const diffInSeconds = Math.floor((now - lastSeenDate) / 1000);
+
+  // Log this once to your console to see the actual gap
+  // console.log(`User saw ${diffInSeconds} seconds ago`);
+
+  return diffInSeconds < 60; // Active if seen in the last minute
+};
+
 function reducer(state, action) {
   switch (action.type) {
     case "loading":
@@ -4134,6 +4216,28 @@ function reducer(state, action) {
           status: action.payload,
           title: "",
           description: "",
+        },
+      };
+    case "updateUserPresence":
+      if (!state.activeBoard) return state;
+      return {
+        ...state,
+        activeBoard: {
+          ...state.activeBoard,
+          // Update members list
+          members: state.activeBoard.members.map((m) =>
+            m.id === action.payload.user_id
+              ? { ...m, last_seen: action.payload.last_seen }
+              : m,
+          ),
+          // Update owner if applicable
+          owner:
+            state.activeBoard.owner?.id === action.payload.user_id
+              ? {
+                  ...state.activeBoard.owner,
+                  last_seen: action.payload.last_seen,
+                }
+              : state.activeBoard.owner,
         },
       };
     case "logout":
@@ -4178,14 +4282,28 @@ function BoardProvider({ children }) {
 
   // --- EFFECT: Join Private User Room for Notifications ---
   useEffect(() => {
-    // We need the user ID to join the correct room
     if (state.isAuthenticated && state.userData?.id) {
       socket.emit("join_user_room", state.userData.id);
       console.log(
         `Joined private notification room: user_${state.userData.id}`,
       );
+
+      // Helper to send the heartbeat with current board context
+      const sendPulse = () => {
+        socket.emit("heartbeat", {
+          user_id: state.userData.id,
+          board_id: state.activeBoard?.id, // Added this
+        });
+        console.log("Heartbeat pulsed");
+      };
+
+      sendPulse();
+      const heartbeatInterval = setInterval(sendPulse, 30000);
+
+      return () => clearInterval(heartbeatInterval);
     }
-  }, [state.isAuthenticated, state.userData?.id]);
+    // Added activeBoard?.id here so the heartbeat updates immediately if you switch boards
+  }, [state.isAuthenticated, state.userData?.id, state.activeBoard?.id]);
 
   useEffect(() => {
     // --- 1. UPDATE LISTENER ---
@@ -4237,6 +4355,10 @@ function BoardProvider({ children }) {
       }
     });
 
+    socket.on("presence_update", (data) => {
+      dispatch({ type: "updateUserPresence", payload: data });
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
@@ -4244,11 +4366,12 @@ function BoardProvider({ children }) {
       socket.off("card_created");
       socket.off("new_notification");
       socket.off("refresh_boards");
+      socket.off("presence_update");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 
   return (
-    <BoardContext.Provider value={{ ...state, dispatch }}>
+    <BoardContext.Provider value={{ ...state, dispatch, isUserActive }}>
       {children}
     </BoardContext.Provider>
   );

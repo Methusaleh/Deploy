@@ -16,6 +16,22 @@ const initialState = {
   userData: null,
 };
 
+export const isUserActive = (lastSeen) => {
+  if (!lastSeen) return false;
+
+  // Ensure we append 'Z' if it's missing to force UTC parsing
+  const formattedLastSeen = lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`;
+  const lastSeenDate = new Date(formattedLastSeen);
+  const now = new Date();
+
+  const diffInSeconds = Math.floor((now - lastSeenDate) / 1000);
+
+  // Log this once to your console to see the actual gap
+  // console.log(`User saw ${diffInSeconds} seconds ago`);
+
+  return diffInSeconds < 60; // Active if seen in the last minute
+};
+
 function reducer(state, action) {
   switch (action.type) {
     case "loading":
@@ -44,6 +60,28 @@ function reducer(state, action) {
           status: action.payload,
           title: "",
           description: "",
+        },
+      };
+    case "updateUserPresence":
+      if (!state.activeBoard) return state;
+      return {
+        ...state,
+        activeBoard: {
+          ...state.activeBoard,
+          // Update members list
+          members: state.activeBoard.members.map((m) =>
+            m.id === action.payload.user_id
+              ? { ...m, last_seen: action.payload.last_seen }
+              : m,
+          ),
+          // Update owner if applicable
+          owner:
+            state.activeBoard.owner?.id === action.payload.user_id
+              ? {
+                  ...state.activeBoard.owner,
+                  last_seen: action.payload.last_seen,
+                }
+              : state.activeBoard.owner,
         },
       };
     case "logout":
@@ -88,14 +126,28 @@ function BoardProvider({ children }) {
 
   // --- EFFECT: Join Private User Room for Notifications ---
   useEffect(() => {
-    // We need the user ID to join the correct room
     if (state.isAuthenticated && state.userData?.id) {
       socket.emit("join_user_room", state.userData.id);
       console.log(
         `Joined private notification room: user_${state.userData.id}`,
       );
+
+      // Helper to send the heartbeat with current board context
+      const sendPulse = () => {
+        socket.emit("heartbeat", {
+          user_id: state.userData.id,
+          board_id: state.activeBoard?.id, // Added this
+        });
+        console.log("Heartbeat pulsed");
+      };
+
+      sendPulse();
+      const heartbeatInterval = setInterval(sendPulse, 30000);
+
+      return () => clearInterval(heartbeatInterval);
     }
-  }, [state.isAuthenticated, state.userData?.id]);
+    // Added activeBoard?.id here so the heartbeat updates immediately if you switch boards
+  }, [state.isAuthenticated, state.userData?.id, state.activeBoard?.id]);
 
   useEffect(() => {
     // --- 1. UPDATE LISTENER ---
@@ -147,6 +199,10 @@ function BoardProvider({ children }) {
       }
     });
 
+    socket.on("presence_update", (data) => {
+      dispatch({ type: "updateUserPresence", payload: data });
+    });
+
     // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
@@ -154,11 +210,12 @@ function BoardProvider({ children }) {
       socket.off("card_created");
       socket.off("new_notification");
       socket.off("refresh_boards");
+      socket.off("presence_update");
     };
   }, [state.activeBoard, state.cards, dispatch]);
 
   return (
-    <BoardContext.Provider value={{ ...state, dispatch }}>
+    <BoardContext.Provider value={{ ...state, dispatch, isUserActive }}>
       {children}
     </BoardContext.Provider>
   );

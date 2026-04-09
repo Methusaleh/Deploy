@@ -311,7 +311,12 @@ const UserMenu = ({ onLogout }) => {
         }}
       >
         <UserAvatar
-          name={`${userData.first_name} ${userData.last_name}`}
+          name={
+            userData
+              ? `${userData.first_name} ${userData.last_name}`
+              : "Aaron Kipf"
+          }
+          isActive={true} // You are always active if you are looking at your own menu!
           size={36}
         />
       </div>
@@ -320,7 +325,9 @@ const UserMenu = ({ onLogout }) => {
         <div className={styles.dropdown}>
           <div className={styles.userInfo}>
             <p className={styles.userName}>
-              {`${userData.first_name} ${userData.last_name}`}
+              {userData
+                ? `${userData.first_name} ${userData.last_name}`
+                : "Guest User"}
             </p>
             <p className={styles.userRole}>Lead Developer</p>
           </div>

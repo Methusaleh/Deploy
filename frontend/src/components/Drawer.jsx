@@ -42,6 +42,10 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   const [description, setDescription] = useState(
     selectedCard.description || "",
   );
+  const [assignedTo, setAssignedTo] = useState(selectedCard?.assigned_to || "");
+  const [dueDate, setDueDate] = useState(
+    selectedCard?.due_date ? selectedCard.due_date.split("T")[0] : "",
+  );
   const [priority, setPriority] = useState(selectedCard.priority || "low");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -195,21 +199,23 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     setSaveStatus("saving");
     try {
       let result;
+      const cardData = {
+        title,
+        description,
+        priority,
+        assigned_to: assignedTo === "" ? null : parseInt(assignedTo),
+        due_date: dueDate === "" ? null : dueDate,
+      };
+
       if (isNew) {
         result = await createCard({
-          title,
-          description,
-          priority,
+          ...cardData,
           status: selectedCard.status,
           board_id: activeBoard.id,
         });
         dispatch({ type: "setCards", payload: [...cards, result] });
       } else {
-        result = await updateCard(selectedCard.id, {
-          title,
-          description,
-          priority,
-        });
+        result = await updateCard(selectedCard.id, cardData);
         const updatedCards = cards.map((c) =>
           c.id === result.id ? result : c,
         );
@@ -229,7 +235,36 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   return (
     <div className={styles.content}>
       <span className={styles.statusBadge}>{selectedCard.status}</span>
+      {/* 1. Only Assignee and Due Date go in the 2-column grid */}
+      <div className={styles.metaRow}>
+        <div className={styles.editGroup}>
+          <label className={styles.label}>Assignee</label>
+          <select
+            className={styles.prioritySelect}
+            value={assignedTo}
+            onChange={(e) => setAssignedTo(e.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {activeBoard?.members?.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.first_name} {m.last_name}
+              </option>
+            ))}
+          </select>
+        </div>
 
+        <div className={styles.editGroup}>
+          <label className={styles.label}>Due Date</label>
+          <input
+            type="date"
+            className={styles.dateInput}
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+        </div>
+      </div>{" "}
+      {/* <--- CLOSE METAROW HERE */}
+      {/* 2. Everything else stacks vertically outside the grid */}
       <div className={styles.editGroup}>
         <label className={styles.label}>Priority</label>
         <select
@@ -242,7 +277,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           <option value="high">High</option>
         </select>
       </div>
-
       <div className={styles.editGroup}>
         <label className={styles.label}>Title</label>
         <input
@@ -253,7 +287,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           autoFocus={isNew}
         />
       </div>
-
       <div className={styles.editGroup}>
         <label className={styles.label}>Description</label>
         <textarea
@@ -263,7 +296,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           placeholder="Add a more detailed description..."
         />
       </div>
-
       <div className={styles.actionRow}>
         <button
           className={`${styles.saveBtn} ${saveStatus === "saved" ? styles.saved : ""}`}
@@ -287,7 +319,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           </button>
         )}
       </div>
-
       {!isNew && (
         <div className={styles.commentSection}>
           <h4 className={styles.activityTitle}>Activity</h4>

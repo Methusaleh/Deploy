@@ -1,6 +1,7 @@
 # backend/app/database.py
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,8 +11,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Set to False in production to reduce terminal noise
+    poolclass=NullPool,  # Disable connection pooling for serverless environments
     connect_args={
         "ssl": True,
+        "statement_cache_size": 0,
         # This specifically prevents the 'channel_binding' error with Neon's pooler
         "server_settings": {"search_path": "public"}
     }

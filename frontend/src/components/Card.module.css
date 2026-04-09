@@ -99,3 +99,51 @@
   border-color: var(--accent-cyan) !important;
   transform: rotate(2deg); /* Gives it that 'picked up' feel */
 }
+
+/* --- FOOTER & META INFO --- */
+
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem; /* Space between description and footer */
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.metaInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dateBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.dateBadge .material-icons {
+  font-size: 14px;
+}
+
+.assigneeAvatar {
+  display: flex;
+  align-items: center;
+  /* Adds a subtle ring to the avatar to make it pop against the card bg */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  padding: 1px;
+  transition: transform 0.2s ease;
+}
+
+.assigneeAvatar:hover {
+  transform: scale(1.1);
+  border-color: var(--accent-cyan);
+}

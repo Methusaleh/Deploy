@@ -11,7 +11,7 @@ const COLORS = [
   "#7c3aed", // Violet
 ];
 
-const UserAvatar = ({ name, size = 40 }) => {
+const UserAvatar = ({ name, size = 40, isActive = false }) => {
   // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
   const getInitials = (str) => {
     if (!str) return "?";
@@ -40,8 +40,16 @@ const UserAvatar = ({ name, size = 40 }) => {
   };
 
   return (
-    <div className={styles.avatar} style={dynamicStyle} title={name}>
-      {getInitials(name)}
+    <div
+      className={styles.container}
+      style={{ width: `${size}px`, height: `${size}px` }}
+    >
+      <div className={styles.avatar} style={dynamicStyle} title={name}>
+        {getInitials(name)}
+      </div>
+
+      {/* The Presence Glow */}
+      {isActive && <div className={styles.indicator} />}
     </div>
   );
 };

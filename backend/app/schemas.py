@@ -29,6 +29,7 @@ class CardBase(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = "Backlog"
     priority: Optional[str] = "low"
+    assigned_to: Optional[int] = None
 
 class CardCreate(CardBase):
     board_id: int
@@ -39,6 +40,7 @@ class CardUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[datetime] = None
+    assigned_to: Optional[int] = None
 
 class CardResponse(CardBase):
     id: int
@@ -46,6 +48,7 @@ class CardResponse(CardBase):
     last_moved_at: datetime
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    assignee: Optional[UserResponse] = None
 
     class Config:
         from_attributes = True

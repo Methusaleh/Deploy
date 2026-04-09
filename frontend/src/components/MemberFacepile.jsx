@@ -1,9 +1,12 @@
 // frontend/src/components/MemberFacepile.jsx
 import React from "react";
+import { useBoards } from "../context/BoardContext";
 import UserAvatar from "./UserAvatar";
 import styles from "./MemberFacepile.module.css";
 
 const MemberFacepile = ({ members = [], owner }) => {
+  const { isUserActive } = useBoards();
+
   let allParticipants = [];
 
   if (owner) {
@@ -25,6 +28,8 @@ const MemberFacepile = ({ members = [], owner }) => {
             name={
               person.full_name || `${person.first_name} ${person.last_name}`
             }
+            // 3. Now isUserActive is defined and usable!
+            isActive={isUserActive(person.last_seen)}
             size={28}
           />
         </div>

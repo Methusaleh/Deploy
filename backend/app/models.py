@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, Tabl
 from sqlalchemy.orm import DeclarativeBase, validates, relationship
 from datetime import datetime
 import re
+from datetime import datetime, timezone
 
 # 1. Define the Base class (SQLAlchemy 2.0 style)
 class Base(DeclarativeBase):
@@ -30,6 +31,7 @@ class User(Base):
     bio = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    last_seen = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     owned_boards = relationship("Board", back_populates="owner", cascade="all, delete-orphan")
@@ -82,6 +84,7 @@ class Card(Base):
     last_moved_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     board_id = Column(Integer, ForeignKey("boards.id", ondelete="CASCADE"))
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     board = relationship("Board", back_populates="cards")
 
