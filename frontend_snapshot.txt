@@ -2823,7 +2823,7 @@ import UserAvatar from "./UserAvatar";
 import styles from "./MemberFacepile.module.css";
 
 const MemberFacepile = ({ members = [], owner }) => {
-  const { isUserActive } = useBoards();
+  const { isUserActive, userData } = useBoards();
 
   let allParticipants = [];
 
@@ -2840,18 +2840,22 @@ const MemberFacepile = ({ members = [], owner }) => {
 
   return (
     <div className={styles.facepile}>
-      {displayMembers.map((person) => (
-        <div key={person.id} className={styles.avatarWrapper}>
-          <UserAvatar
-            name={
-              person.full_name || `${person.first_name} ${person.last_name}`
-            }
-            // 3. Now isUserActive is defined and usable!
-            isActive={isUserActive(person.last_seen)}
-            size={28}
-          />
-        </div>
-      ))}
+      {displayMembers.map((person) => {
+        const isMe = person.id === userData?.id;
+
+        return (
+          <div key={person.id} className={styles.avatarWrapper}>
+            <UserAvatar
+              name={
+                person.full_name || `${person.first_name} ${person.last_name}`
+              }
+              // 3. If it's me, force it to true. If not, use the timestamp math.
+              isActive={isMe ? true : isUserActive(person.last_seen)}
+              size={28}
+            />
+          </div>
+        );
+      })}
 
       {extraCount > 0 && (
         <div className={styles.extraBubble}>+{extraCount}</div>
