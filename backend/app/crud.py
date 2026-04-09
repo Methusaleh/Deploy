@@ -35,8 +35,6 @@ async def get_cards_by_board(db: AsyncSession, board_id: int):
     return result.scalars().all()
 
 async def get_all_user_cards(db: AsyncSession, user_id: int):
-    # This joins the Boards and Cards tables 
-    # to find cards where the board's owner_id matches the user
     query = (
         select(models.Card)
         .join(models.Board)

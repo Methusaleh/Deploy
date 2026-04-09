@@ -19,7 +19,6 @@ from .models import Base
 # 1. Define the Lifespan logic
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # creates the tables in Neon if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield 
@@ -45,7 +44,6 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # 1. Decode the JWT using your auth_utils constants
         payload = jwt.decode(
             token, 
             auth_utils.SECRET_KEY, 
@@ -57,7 +55,6 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
         
-    # 2. Look up the user in Neon
     query = select(models.User).where(models.User.email == email)
     result = await db.execute(query)
     user = result.scalars().first()
@@ -66,7 +63,6 @@ async def get_current_user(
         raise credentials_exception
     return user
 
-# 3. CORS Setup
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -91,7 +87,6 @@ sio = socketio.AsyncServer(
 # Create the ASGI wrapper
 socket_app = socketio.ASGIApp(sio, app)
 
-# CRITICAL: Mount the socket.io handler so the 404 error disappears
 app.mount("/socket.io", socket_app)
 
 @sio.event
@@ -101,7 +96,7 @@ async def connect(sid, environ):
 @sio.event
 async def heartbeat(sid, data):
     user_id = data.get("user_id")
-    board_id = data.get("board_id") # Capture the board context
+    board_id = data.get("board_id") 
     if not user_id:
         return
 
@@ -115,7 +110,6 @@ async def heartbeat(sid, data):
         )
         await db.commit()
 
-    # BROADCAST: Tell everyone on this board that this user is active
     if board_id:
         await sio.emit("presence_update", {
             "user_id": user_id,
@@ -133,7 +127,6 @@ async def join_user_room(sid, user_id):
     print(f"Client {sid} joined private room user_{user_id}")
 
 
-# 6. Routes
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Deploy API is running"}
@@ -165,12 +158,10 @@ async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Find the user by email (OAuth2Form uses 'username' field for the login ID)
     query = select(models.User).where(models.User.email == form_data.username)
     result = await db.execute(query)
     user = result.scalars().first()
 
-    # 2. Validate existence and password
     if not user or not auth_utils.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=401, 
@@ -178,33 +169,29 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 3. Generate the token
     access_token = auth_utils.create_access_token(data={"sub": user.email})
     
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/register", response_model=schemas.UserResponse)
 async def register_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
-    # 1. Check if email exists
     query = select(models.User).where(models.User.email == user_in.email)
     result = await db.execute(query)
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # 2. Manual Handle Generation (The Fix)
     generated_handle = user_in.handle
     if not generated_handle:
         clean_first = re.sub(r'\W+', '', user_in.first_name.lower())
         clean_last = re.sub(r'\W+', '', user_in.last_name.lower())
         generated_handle = f"@{clean_first}_{clean_last}"
 
-    # 3. Create user with the guaranteed handle
     new_user = models.User(
         email=user_in.email,
         hashed_password=auth_utils.hash_password(user_in.password),
         first_name=user_in.first_name,
         last_name=user_in.last_name,
-        handle=generated_handle, # Pass the handle explicitly here
+        handle=generated_handle, 
         is_active=True
     )
     
@@ -233,7 +220,6 @@ async def create_new_board(
     db.add(new_board)
     await db.commit()
     
-    # RE-QUERY with selectinload to satisfy the schema's member requirement
     query = (
         select(models.Board)
         .options(selectinload(models.Board.members))
@@ -242,7 +228,6 @@ async def create_new_board(
     result = await db.execute(query)
     board_with_data = result.scalar_one()
 
-    # Trigger the real-time sync
     try:
         await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
     except Exception as e:
@@ -255,7 +240,7 @@ async def create_card(card_in: schemas.CardCreate, db: AsyncSession = Depends(ge
     new_card = models.Card(
         title=card_in.title,
         description=card_in.description,
-        status=card_in.status.lower(), # [cite: 285] Force lowercase
+        status=card_in.status.lower(), 
         priority=card_in.priority.lower(),
         board_id=card_in.board_id
     )
@@ -287,7 +272,7 @@ async def get_my_boards(
     
     query = (
         select(models.Board)
-        .options(selectinload(models.Board.members)) # ADD THIS for the facepile!
+        .options(selectinload(models.Board.members)) 
         .outerjoin(models.board_members)
         .where(
             (models.Board.owner_id == current_user.id) | 
@@ -298,8 +283,6 @@ async def get_my_boards(
     result = await db.execute(query)
     return result.scalars().unique().all()
 
-# backend/app/main.py
-
 @app.get("/boards/{board_id}", response_model=schemas.BoardResponse)
 async def get_board_details(
     board_id: int, 
@@ -307,7 +290,6 @@ async def get_board_details(
     current_user: models.User = Depends(get_current_user)
 ):
     from sqlalchemy.orm import selectinload
-    # 1. Fetch board and explicitly include the members relationship
     query = (
         select(models.Board)
         .options(selectinload(models.Board.members))
@@ -319,7 +301,6 @@ async def get_board_details(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
         
-    # 2. Security Check: Ensure user is owner or member
     member_ids = [m.id for m in board.members]
     if board.owner_id != current_user.id and current_user.id not in member_ids:
         raise HTTPException(status_code=403, detail="Not a member of this board")
@@ -381,7 +362,6 @@ async def update_card_status(card_id: int, new_status: str, db: AsyncSession = D
     if not updated_card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    # Broadcast to everyone in the board's room
     await sio.emit("card_updated", {
         "id": card_id,
         "status": new_status,
@@ -402,7 +382,6 @@ async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(card)
     try:
         await db.commit()
-        # Broadcast the deletion so other tabs remove it
         await sio.emit("card_deleted", {"id": card_id}, room=str(board_id))
         return {"message": "Card deleted successfully"}
     except Exception as e:
@@ -414,7 +393,7 @@ async def update_card(
     card_id: int, 
     card_update: schemas.CardUpdate, 
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user) # Needed to know who to notify
+    current_user: models.User = Depends(get_current_user)
 ):
     result = await db.execute(select(models.Card).filter(models.Card.id == card_id))
     card = result.scalars().first()
@@ -422,29 +401,24 @@ async def update_card(
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
-    # 1. Extract the update data
     update_data = card_update.model_dump(exclude_unset=True)
 
-    # 2. Force lowercase on status and priority immediately
     if "status" in update_data and update_data["status"]:
         update_data["status"] = update_data["status"].lower()
 
     if "priority" in update_data and update_data["priority"]:
         update_data["priority"] = update_data["priority"].lower()
         
-    # 3. STATUS CHANGE LOGIC: Timestamps + Notifications
     if "status" in update_data and update_data["status"] != card.status:
         old_status = card.status
         new_status = update_data["status"]
         card.last_moved_at = datetime.now(timezone.utc)
         
-        # Update completion dates
         if new_status in ["done", "deploy"]:
             card.completed_at = datetime.now(timezone.utc)
         else:
             card.completed_at = None
 
-        # JIRA LOGIC: Create an automated notification for the Inbox
         new_notification = models.Notification(
             type="status_change",
             message=f"Task '{card.title}' moved from {old_status.upper()} to {new_status.upper()}",
@@ -462,7 +436,6 @@ async def update_card(
             "type": new_notification.type
         }, room=f"user_{current_user.id}")    
 
-    # 4. Apply the rest of the updates to the database model
     for key, value in update_data.items():
         setattr(card, key, value)
 
@@ -470,7 +443,6 @@ async def update_card(
         await db.commit()
         await db.refresh(card)
 
-        # Broadcast the update to the board room via Socket.io
         await sio.emit("card_updated", {
             "id": card.id,
             "title": card.title,
@@ -488,7 +460,6 @@ async def update_card(
         print(f"Database Error: {e}")
         raise HTTPException(status_code=500, detail="Database update failed")
     
-# --- COMMENT ROUTES ---
 
 @app.post("/cards/{card_id}/comments", response_model=schemas.CommentResponse)
 async def create_comment(
@@ -497,8 +468,6 @@ async def create_comment(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Save the comment and COMMIT immediately
-    # This ensures the record exists in Neon before we trigger any secondary logic
     new_comment = models.Comment(
         content=comment_in.content,
         card_id=card_id,
@@ -513,7 +482,6 @@ async def create_comment(
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to save comment")
 
-    # 2. MENTION LOGIC: Now that the comment is "Safe", search for handles
     mentions = re.findall(r"@(\w+)", comment_in.content)
     
     for handle in mentions:
@@ -523,7 +491,6 @@ async def create_comment(
         mentioned_user = user_query.scalars().first()
         
         if mentioned_user:
-            # Create the mention notification
             new_notif = models.Notification(
                 type="mention",
                 message=f"{current_user.first_name} mentioned you in a comment",
@@ -531,9 +498,8 @@ async def create_comment(
                 card_id=card_id
             )
             db.add(new_notif)
-            await db.flush() # flush is fine here since we commit below
+            await db.flush()
             
-            # Ping their private socket room
             await sio.emit("new_notification", {
                 "id": new_notif.id,
                 "message": new_notif.message,
@@ -541,10 +507,8 @@ async def create_comment(
                 "type": "mention"
             }, room=f"user_{mentioned_user.id}")
 
-    # Final commit for any created notifications
     await db.commit()
     
-    # 3. Manually attach the name for the frontend response
     new_comment.author_name = f"{current_user.first_name} {current_user.last_name}"
     return new_comment
 
@@ -564,7 +528,6 @@ async def get_comments(card_id: int, db: AsyncSession = Depends(get_db)):
     
     comments_with_authors = []
     for comment_obj, author_name in result.all():
-        # This matches the 'author_name' property we set in create_comment
         comment_obj.author_name = author_name
         comments_with_authors.append(comment_obj)
         
@@ -577,7 +540,6 @@ async def search_users(
     current_user: models.User = Depends(get_current_user)
 ):
     """Search users for mentions or board invitations, excluding self."""
-    # Clean the query: remove '@' if the user typed it, so we search the raw string
     clean_q = q.replace("@", "").lower()
     search_term = f"%{clean_q}%"
 
@@ -611,7 +573,7 @@ async def clear_all_notifications(
     query = (
         update(models.Notification)
         .where(models.Notification.user_id == current_user.id)
-        .values(is_archived=True, is_read=True) # Usually, archiving implies you've 'seen' them
+        .values(is_archived=True, is_read=True)
     )
     
     await db.execute(query)
@@ -646,14 +608,12 @@ async def invite_to_board(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Verify Board Ownership
     board_query = await db.execute(select(models.Board).where(models.Board.id == board_id))
     board = board_query.scalar_one_or_none()
     
     if not board or board.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the board owner can invite members")
 
-    # 2. Check if user is already a member
     member_check = await db.execute(
         select(models.User).join(models.Board.members).where(
             models.Board.id == board_id,
@@ -663,7 +623,6 @@ async def invite_to_board(
     if member_check.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="User is already a member of this board")
 
-    # 3. Create the Invitation Record
     new_invite = models.BoardInvitation(
         board_id=board_id,
         sender_id=current_user.id,
@@ -672,8 +631,6 @@ async def invite_to_board(
     )
     db.add(new_invite)
     
-    # 4. Create an In-App Notification 
-    # FIX: 'link' removed as it is not a valid column in your models.py
     new_notif = models.Notification(
         user_id=invite_data.recipient_id,
         message=f"{current_user.first_name} invited you to join the board: {board.title}",
@@ -683,17 +640,16 @@ async def invite_to_board(
     
     try:
         await db.commit()
-        await db.refresh(new_notif) # Refresh to get the generated ID and created_at
+        await db.refresh(new_notif) 
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create invitation")
 
-    # 5. Socket.io Real-time Alert
     await sio.emit("new_notification", {
         "id": new_notif.id,
         "message": new_notif.message,
         "created_at": str(new_notif.created_at),
-        "type": "invite" # Added type so frontend knows how to style it
+        "type": "invite" 
     }, room=f"user_{invite_data.recipient_id}")
 
     return {"message": "Invitation sent successfully"}
@@ -704,7 +660,6 @@ async def accept_invitation(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Find the Notification to confirm context
     notif_query = await db.execute(
         select(models.Notification).where(models.Notification.id == notif_id)
     )
@@ -713,8 +668,6 @@ async def accept_invitation(
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
 
-    # 2. Find the pending invitation for this user
-    # We look for the most recent pending invite for the recipient
     invite_query = select(models.BoardInvitation).where(
         models.BoardInvitation.recipient_id == current_user.id,
         models.BoardInvitation.status == "pending"
@@ -726,8 +679,6 @@ async def accept_invitation(
     if not invitation:
         raise HTTPException(status_code=404, detail="No pending invitation found for this user")
 
-    # 3. Get the board associated with the invitation
-    # We use selectinload to ensure we can modify the members relationship safely
     from sqlalchemy.orm import selectinload
     board_query = await db.execute(
         select(models.Board)
@@ -739,12 +690,9 @@ async def accept_invitation(
     if not board:
         raise HTTPException(status_code=404, detail="Board no longer exists")
 
-    # 4. Add user to board members
-    # Checking against board.members is more direct since we loaded it above
     if current_user not in board.members:
         board.members.append(current_user)
     
-    # 5. Update status and Archive the notification
     invitation.status = "accepted"
     notification.is_archived = True
     notification.is_read = True
@@ -765,14 +713,12 @@ async def decline_invitation(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Verify the notification exists
     notif_query = await db.execute(select(models.Notification).where(models.Notification.id == notif_id))
     notification = notif_query.scalar_one_or_none()
 
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
 
-    # 2. Find the most recent pending invitation for this user
     invite_query = select(models.BoardInvitation).where(
         models.BoardInvitation.recipient_id == current_user.id,
         models.BoardInvitation.status == "pending"
@@ -784,7 +730,6 @@ async def decline_invitation(
     if not invitation:
         raise HTTPException(status_code=404, detail="No pending invitation found")
 
-    # 3. Update status to declined and archive the notification
     invitation.status = "declined"
     notification.is_archived = True
     notification.is_read = True
@@ -801,7 +746,6 @@ async def delete_board(
 ):
     from sqlalchemy.orm import selectinload
     
-    # 1. Fetch board with members PRE-LOADED to avoid Greenlet errors
     query = await db.execute(
         select(models.Board)
         .options(selectinload(models.Board.members))
@@ -812,16 +756,13 @@ async def delete_board(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    # 2. Store info for notifications before database actions
     owner_id = board.owner_id
     member_ids = [m.id for m in board.members]
 
-    # --- CASE A: OWNER DELETES BOARD ---
     if owner_id == current_user.id:
         await db.delete(board)
         await db.commit()
 
-        # Notify everyone via socket safely
         try:
             await sio.emit("refresh_boards", {}, room=f"user_{owner_id}")
             for m_id in member_ids:
@@ -831,12 +772,10 @@ async def delete_board(
 
         return {"message": "Board and all its cards have been deleted"}
 
-    # --- CASE B: MEMBER LEAVES BOARD ---
     if current_user in board.members:
         board.members.remove(current_user)
         await db.commit()
         
-        # Notify the user who left to refresh their sidebar
         try:
             await sio.emit("refresh_boards", {}, room=f"user_{current_user.id}")
         except Exception as e:
