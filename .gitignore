@@ -12,6 +12,12 @@ dist/
 build/
 .eslintcache
 npm-debug.log*
+.env.local
+.env.production.local
+
+# Snapshots & Bundles
+deploy_snapshot.txt
+frontend_snapshot.txt
 
 # IDE Settings
 .vscode/

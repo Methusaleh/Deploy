@@ -2897,7 +2897,7 @@ import UserAvatar from "./UserAvatar";
 import styles from "./MemberFacepile.module.css";
 
 const MemberFacepile = ({ members = [], owner }) => {
-  const { isUserActive } = useBoards();
+  const { isUserActive, userData } = useBoards();
 
   let allParticipants = [];
 
@@ -2914,18 +2914,22 @@ const MemberFacepile = ({ members = [], owner }) => {
 
   return (
     <div className={styles.facepile}>
-      {displayMembers.map((person) => (
-        <div key={person.id} className={styles.avatarWrapper}>
-          <UserAvatar
-            name={
-              person.full_name || `${person.first_name} ${person.last_name}`
-            }
-            // 3. Now isUserActive is defined and usable!
-            isActive={isUserActive(person.last_seen)}
-            size={28}
-          />
-        </div>
-      ))}
+      {displayMembers.map((person) => {
+        const isMe = person.id === userData?.id;
+
+        return (
+          <div key={person.id} className={styles.avatarWrapper}>
+            <UserAvatar
+              name={
+                person.full_name || `${person.first_name} ${person.last_name}`
+              }
+              // 3. If it's me, force it to true. If not, use the timestamp math.
+              isActive={isMe ? true : isUserActive(person.last_seen)}
+              size={28}
+            />
+          </div>
+        );
+      })}
 
       {extraCount > 0 && (
         <div className={styles.extraBubble}>+{extraCount}</div>
@@ -3521,7 +3525,7 @@ const COLORS = [
 const UserAvatar = ({ name, size = 40, isActive = false }) => {
   // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
   const getInitials = (str) => {
-    if (!str) return "?";
+    if (!str || str.includes("undefined")) return "AK";
     const parts = str.trim().split(/\s+/);
     if (parts.length > 1) {
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -4670,7 +4674,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Set to False in production to reduce terminal noise
-    poolclass=NullPool,  # Disable connection pooling for serverless environments
     connect_args={
         "ssl": True,
         "statement_cache_size": 0,
@@ -4766,7 +4769,7 @@ async def get_current_user(
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://deploy-inky-one-23.vercel.app/",
+    "https://deploy-inky-one-23.vercel.app",
     "https://deploy-3o2uwq154-aaron-kipfs-projects.vercel.app"
 ]
 
