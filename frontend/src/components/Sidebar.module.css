@@ -1,5 +1,3 @@
-/* frontend/src/components/Sidebar.module.css */
-
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -18,13 +16,12 @@
   margin-bottom: 2rem;
 }
 
-/* UPDATED: Changed to Flex to support the '+' button */
 .sectionHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 0.5rem;
-  margin: 2rem 0 0.5rem 0; /* Adjusted margins for better alignment */
+  margin: 2rem 0 0.5rem 0;
   width: 100%;
 }
 
@@ -38,7 +35,6 @@
   opacity: 0.6;
 }
 
-/* NEW: The creation button style */
 .addBoardBtn {
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.05);
@@ -55,7 +51,7 @@
   font-size: 1rem;
   line-height: 1;
   padding: 0;
-  padding-bottom: 2px; /* Optical alignment for the '+' character */
+  padding-bottom: 2px;
 }
 
 .addBoardBtn:hover {
@@ -82,7 +78,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 1rem; /* Reduced slightly since header has margin */
+  margin-top: 1rem;
 }
 
 .navItem {

@@ -1,4 +1,3 @@
-// frontend/src/components/Home.jsx
 import React, { useEffect, useState } from "react";
 import { getMyGlobalCards } from "../api/cards";
 import { useBoards } from "../context/BoardContext";
@@ -23,9 +22,6 @@ const Home = () => {
     fetchGlobalData();
   }, []);
 
-  // --- WIDGET LOGIC ---
-
-  // 1. Urgent Widget: Top 5 High Priority (Excluding completed cards)
   const urgentTasks = globalCards
     .filter((c) => {
       const isHigh = c.priority?.toLowerCase() === "high";
@@ -36,18 +32,15 @@ const Home = () => {
     })
     .slice(0, 5);
 
-  // 2. Recent Widget: Last 5 items moved
   const recentTasks = [...globalCards]
     .sort((a, b) => new Date(b.last_moved_at) - new Date(a.last_moved_at))
     .slice(0, 5);
 
-  // 3. Global Stats: Count all completed cards across all boards
   const completedTasksCount = globalCards.filter((c) => {
     const status = c.status?.toLowerCase() || "";
     return status === "done" || status === "deploy" || status === "completed";
   }).length;
 
-  // 4. Project Health: Progress bars per board
   const boardHealth = boards.map((board) => {
     const boardCards = globalCards.filter((c) => c.board_id === board.id);
 
@@ -64,9 +57,6 @@ const Home = () => {
     return { ...board, progress, total: boardCards.length };
   });
 
-  // --- NEW WIDGET LOGIC ---
-
-  // 5. Shortcuts: Just the top 4 boards for quick access
   const boardShortcuts = boards.slice(0, 4);
 
   if (loading)
@@ -92,7 +82,6 @@ const Home = () => {
         </div>
       </header>
 
-      {/* RE-STYLED STATS ROW */}
       <section className={styles.statsGrid}>
         <div className={styles.statCard} data-type="total">
           <div className={styles.statIcon}>Σ</div>
@@ -111,9 +100,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* BENTO GRID */}
       <div className={styles.bentoGrid}>
-        {/* WIDGET 1: URGENT */}
         <div className={styles.widget}>
           <h3>Urgent (High Priority)</h3>
           <div className={styles.widgetContent}>
@@ -138,7 +125,6 @@ const Home = () => {
           </div>
         </div>
 
-        {/* WIDGET 2: RECENT ACTIVITY */}
         <div className={styles.widget}>
           <h3>Recent Activity</h3>
           <div className={styles.widgetContent}>
@@ -166,7 +152,6 @@ const Home = () => {
           </div>
         </div>
 
-        {/* WIDGET 3: PROJECT HEALTH */}
         <div className={styles.widget}>
           <h3>Project Health</h3>
           <div className={styles.widgetContent}>
@@ -187,7 +172,6 @@ const Home = () => {
           </div>
         </div>
 
-        {/* WIDGET 4: BOARD SHORTCUTS (The Gap Filler) */}
         <div className={styles.widget}>
           <h3>Quick Links</h3>
           <div className={styles.shortcutGrid}>

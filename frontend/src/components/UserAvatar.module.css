@@ -1,8 +1,6 @@
-/* frontend/src/components/UserAvatar.module.css */
 .container {
   position: relative;
   display: inline-flex;
-  /* Ensure the dot can 'hang' off the edge */
   overflow: visible !important;
 }
 
@@ -13,7 +11,6 @@
   justify-content: center;
   color: white;
   font-weight: 600;
-  /* Make sure this is NOT hidden */
   overflow: visible;
 }
 
@@ -24,12 +21,11 @@
 
 .indicator {
   position: absolute;
-  /* Nudge it slightly into the corner */
   bottom: 0;
   right: 0;
   width: 12px;
   height: 12px;
-  background-color: #39ff14; /* Neon Green */
+  background-color: #39ff14;
   border-radius: 50%;
   border: 2px solid #181818;
   box-shadow: 0 0 10px #39ff14;

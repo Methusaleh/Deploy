@@ -16,8 +16,12 @@
 body {
   background-color: var(--bg-main);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
-  overflow: hidden; /* Prevents double scrollbars */
+  font-family:
+    "Inter",
+    -apple-system,
+    system-ui,
+    sans-serif;
+  overflow: hidden;
 }
 
 .app-container {
@@ -26,7 +30,6 @@ body {
   width: 100vw;
 }
 
-/* We'll use this class for the dimming effect later */
 .dimmed {
   filter: brightness(0.5);
   pointer-events: none;

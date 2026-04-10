@@ -2,7 +2,6 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
-# --- 1. USER SCHEMAS ---
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -21,9 +20,7 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True 
 
-# --- 2. CARD SCHEMAS ---
 
-# This is the "Parent" schema to avoid repeating fields
 class CardBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -53,7 +50,6 @@ class CardResponse(CardBase):
     class Config:
         from_attributes = True
 
-# --- 3. AUTH SCHEMAS ---
 
 class Token(BaseModel):
     access_token: str
@@ -62,7 +58,6 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
-# --- 4. BOARD SCHEMAS ---
 
 class BoardBase(BaseModel):
     title: str
@@ -78,7 +73,6 @@ class BoardResponse(BoardBase):
     class Config:
         from_attributes = True
 
-        # --- COMMENT SCHEMAS ---
 class CommentBase(BaseModel):
     content: str
 
@@ -90,18 +84,15 @@ class CommentResponse(CommentBase):
     created_at: datetime
     user_id: int
     card_id: int
-    # We'll include the author's name for the UI
     author_name: Optional[str] = None 
 
     class Config:
         from_attributes = True
 
-# --- NOTIFICATION SCHEMAS ---
 class NotificationResponse(BaseModel):
     id: int
-    user_id: int  # Keep this!
+    user_id: int  
     message: str
-    # This is the "Fix" for the 500 error
     type: Optional[str] = None 
     is_read: bool
     is_archived: bool

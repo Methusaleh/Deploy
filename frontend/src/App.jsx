@@ -1,4 +1,3 @@
-// frontend/src/App.jsx
 import { useState } from "react";
 import { useBoards } from "./context/BoardContext";
 import Sidebar from "./components/Sidebar";
@@ -20,7 +19,7 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    window.location.reload(); // Hard refresh to reset the state
+    window.location.reload();
   };
 
   if (!isAuthenticated) {

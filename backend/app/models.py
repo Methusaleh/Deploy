@@ -4,12 +4,9 @@ from datetime import datetime
 import re
 from datetime import datetime, timezone
 
-# 1. Define the Base class (SQLAlchemy 2.0 style)
 class Base(DeclarativeBase):
     pass
 
-# --- 2. ASSOCIATION TABLE ---
-# Links users to boards they have been invited to.
 board_members = Table(
     "board_members",
     Base.metadata,
@@ -33,7 +30,6 @@ class User(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     owned_boards = relationship("Board", back_populates="owner", cascade="all, delete-orphan")
     shared_boards = relationship("Board", secondary=board_members, back_populates="members")
 
@@ -52,7 +48,6 @@ class Board(Base):
     title = Column(String, nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
-    # Relationships
     owner = relationship("User", back_populates="owned_boards")
     members = relationship("User", secondary=board_members, back_populates="shared_boards")
     cards = relationship("Card", back_populates="board", cascade="all, delete-orphan")
@@ -67,7 +62,6 @@ class BoardInvitation(Base):
     status = Column(String, default="pending") # pending, accepted, declined
     created_at = Column(DateTime, default=func.now())
 
-    # Relationships
     board = relationship("Board")
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
@@ -101,7 +95,6 @@ class Comment(Base):
 class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
-    # This matches your requirement for "mention", "invite", etc.
     type = Column(String, nullable=True) 
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)

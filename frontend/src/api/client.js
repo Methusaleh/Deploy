@@ -4,7 +4,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
-// This interceptor is CRITICAL. It runs before every single request.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {

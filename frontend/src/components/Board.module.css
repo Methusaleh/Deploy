@@ -5,7 +5,7 @@
   padding-right: 80px;
   width: calc(100vw - 260px);
   overflow: hidden;
-  background-color: var(--bg-main); /* #121212 */
+  background-color: var(--bg-main);
 }
 
 .header {
@@ -15,7 +15,7 @@
 
 .headerMain {
   display: flex;
-  justify-content: space-between; /* This creates the big gap in the middle */
+  justify-content: space-between;
   align-items: center;
   width: 100%;
 }
@@ -23,7 +23,7 @@
 .contextGroup {
   display: flex;
   align-items: center;
-  gap: 16px; /* Space between Title and Facepile */
+  gap: 16px;
 }
 
 .contextGroup h1 {
@@ -36,7 +36,7 @@
 .actionGroup {
   display: flex;
   align-items: center;
-  gap: 12px; /* Consistent spacing between Count, Share, and Settings */
+  gap: 12px;
 }
 
 .totalCount {
@@ -44,7 +44,7 @@
   color: var(--text-secondary);
   background-color: rgba(255, 255, 255, 0.05);
   padding: 4px 12px;
-  border-radius: 20px; /* Use 20px for a 'pill' look or 6px for a square look */
+  border-radius: 20px;
   border: 1px solid var(--border-subtle);
   font-weight: 600;
   white-space: nowrap;
@@ -95,8 +95,6 @@
   background: #333;
   border-radius: 10px;
 }
-
-/* --- NEW SETTINGS DROPDOWN STYLES --- */
 
 .settingsWrapper {
   position: relative;

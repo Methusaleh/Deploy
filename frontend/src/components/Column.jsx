@@ -5,7 +5,6 @@ import styles from "./Column.module.css";
 function Column({ id, title, cards, dispatch }) {
   return (
     <div className={styles.column}>
-      {/* 1. HEADER AREA: Title, Count, and Add Button */}
       <header className={styles.columnHeader}>
         <div className={styles.titleWrapper}>
           <h3 className={styles.columnTitle}>{title}</h3>
@@ -20,7 +19,6 @@ function Column({ id, title, cards, dispatch }) {
         </button>
       </header>
 
-      {/* 2. DROP ZONE: This is only for the cards and the placeholder */}
       <Droppable droppableId={id}>
         {(provided, snapshot) => (
           <div

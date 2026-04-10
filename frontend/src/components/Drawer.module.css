@@ -1,4 +1,3 @@
-/* --- 1. MAIN CONTAINER & OVERLAY --- */
 .drawer {
   position: fixed;
   top: 0;
@@ -37,7 +36,6 @@
   pointer-events: auto;
 }
 
-/* --- 2. HEADER --- */
 .header {
   display: flex;
   justify-content: flex-end;
@@ -68,7 +66,6 @@
   border-radius: 10px;
 }
 
-/* --- 3. FORM ELEMENTS --- */
 .editGroup {
   margin-bottom: 1.5rem;
   width: 100%;
@@ -99,7 +96,6 @@
   margin-bottom: 1.5rem;
 }
 
-/* Unified Base for Inputs */
 .titleInput,
 .descInput,
 .prioritySelect,
@@ -135,13 +131,12 @@
   resize: vertical;
 }
 
-/* Specifics for Dropdowns and Date */
 .prioritySelect,
 .dateInput {
   padding: 10px 12px;
   font-size: 0.9rem;
   cursor: pointer;
-  background-color: #222; /* Solid background for visibility */
+  background-color: #222;
 }
 
 .dateInput::-webkit-calendar-picker-indicator {
@@ -162,7 +157,6 @@
   margin-bottom: 0.5rem;
 }
 
-/* --- 4. ACTION BUTTONS --- */
 .actionRow {
   display: flex;
   gap: 12px;
@@ -212,7 +206,6 @@
   background: rgba(255, 68, 68, 0.05);
 }
 
-/* --- 5. ACTIVITY / COMMENTS --- */
 .commentSection {
   margin-top: 1rem;
   border-top: 1px solid var(--border-subtle);
@@ -265,7 +258,6 @@
   color: var(--text-primary);
 }
 
-/* --- 6. MENTIONS & INPUT --- */
 .commentForm {
   display: flex;
   gap: 8px;

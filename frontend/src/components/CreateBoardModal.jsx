@@ -1,4 +1,3 @@
-// frontend/src/components/CreateBoardModal.jsx
 import React, { useState } from "react";
 import api from "../api/client";
 import styles from "./CreateBoardModal.module.css";
@@ -18,8 +17,6 @@ const CreateBoardModal = ({ onClose }) => {
     try {
       await api.post("/boards/", { title });
 
-      // We force the context to reload the sidebar so the new board appears
-      // (Assuming you have a way to refresh boards, or we just reload the page for V1)
       onClose();
     } catch (err) {
       console.error("Failed to create board:", err);

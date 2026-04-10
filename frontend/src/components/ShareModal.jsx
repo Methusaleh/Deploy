@@ -1,4 +1,3 @@
-// frontend/src/components/ShareModal.jsx
 import { useState, useEffect } from "react";
 import api from "../api/client";
 import UserAvatar from "./UserAvatar";
@@ -35,7 +34,6 @@ const ShareModal = ({ boardId, onClose }) => {
 
   const sendAllInvites = async () => {
     try {
-      // Loop through selected users and send invites
       const promises = selectedUsers.map((user) =>
         api.post(`/boards/${boardId}/invite`, { recipient_id: user.id }),
       );
@@ -44,7 +42,6 @@ const ShareModal = ({ boardId, onClose }) => {
       console.log(`Sent ${selectedUsers.length} invitations!`);
       onClose();
     } catch (err) {
-      // Access the detailed error message from the backend response
       const errorMessage =
         err.response?.data?.detail || "Some invitations failed to send.";
       console.error("Invite Error:", err);
@@ -57,7 +54,6 @@ const ShareModal = ({ boardId, onClose }) => {
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <h3>Collaborators</h3>
 
-        {/* Selected Users "Chips" Area */}
         <div className={styles.stagingArea}>
           {selectedUsers.map((user) => (
             <div key={user.id} className={styles.userChip}>
@@ -89,7 +85,6 @@ const ShareModal = ({ boardId, onClose }) => {
                 <span>
                   {user.first_name} {user.last_name}
                 </span>
-                {/* Fix: Only show @ if the handle doesn't already have it */}
                 <small>
                   {user.handle.startsWith("@")
                     ? user.handle

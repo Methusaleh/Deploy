@@ -1,4 +1,3 @@
-// frontend/src/components/ConfirmModal.jsx
 import React from "react";
 import styles from "./ConfirmModal.module.css";
 
@@ -21,7 +20,6 @@ const ConfirmModal = ({
         <div className={styles.modalBody}>
           <p>{message}</p>
 
-          {/* Moved the error message here so it stays inside the content flow */}
           {errorMessage && <p className={styles.errorText}>{errorMessage}</p>}
         </div>
 

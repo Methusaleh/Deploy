@@ -6,7 +6,6 @@ import styles from "./Card.module.css";
 function Card({ card, index }) {
   const { dispatch, activeBoard } = useBoards();
 
-  // Normalize priority for the CSS class (defaults to 'low')
   const priorityClass = card.priority?.toLowerCase() || "low";
   const assignee = activeBoard?.members?.find((m) => m.id === card.assigned_to);
 
@@ -17,13 +16,11 @@ function Card({ card, index }) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          /* We add a 'dragging' class so we can style the card while it's being moved */
           className={`${styles.card} ${styles[priorityClass]} ${
             snapshot.isDragging ? styles.dragging : ""
           }`}
           onClick={() => dispatch({ type: "selectCard", payload: card })}
         >
-          {/* The vertical color accent */}
           <div className={styles.priorityBar}></div>
 
           <div className={styles.content}>

@@ -1,4 +1,4 @@
-import { useState } from "react"; // Added missing import
+import { useState } from "react";
 import { useBoards } from "../context/BoardContext";
 import CreateBoardModal from "./CreateBoardModal";
 import styles from "./Sidebar.module.css";
@@ -43,7 +43,6 @@ function Sidebar() {
         </div>
       </aside>
 
-      {/* Render the modal outside the aside to prevent CSS clipping */}
       {isCreateModalOpen && (
         <CreateBoardModal onClose={() => setIsCreateModalOpen(false)} />
       )}

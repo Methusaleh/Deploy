@@ -1,4 +1,3 @@
-// frontend/src/components/UserAvatar.jsx
 import React from "react";
 import styles from "./UserAvatar.module.css";
 
@@ -12,7 +11,6 @@ const COLORS = [
 ];
 
 const UserAvatar = ({ name, size = 40, isActive = false }) => {
-  // 1. Get Initials (e.g., "Aaron Kipf" -> "AK")
   const getInitials = (str) => {
     if (!str || str.includes("undefined")) return "AK";
     const parts = str.trim().split(/\s+/);
@@ -22,7 +20,6 @@ const UserAvatar = ({ name, size = 40, isActive = false }) => {
     return parts[0][0].toUpperCase();
   };
 
-  // 2. Consistent Color Hash
   const getColor = (str) => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -48,7 +45,6 @@ const UserAvatar = ({ name, size = 40, isActive = false }) => {
         {getInitials(name)}
       </div>
 
-      {/* The Presence Glow */}
       {isActive && <div className={styles.indicator} />}
     </div>
   );

@@ -1,5 +1,4 @@
-// frontend/src/api/boards.js
-import apiClient from "./client"; // Notice I fixed the typo (apiCLient -> apiClient)
+import apiClient from "./client";
 
 export const getBoards = async () => {
   const res = await apiClient.get("/boards/me");

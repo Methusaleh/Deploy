@@ -96,11 +96,9 @@ function Board() {
     }
   };
 
-  // This function runs the moment you let go of a dragged card
   const onDragEnd = async (result) => {
     const { destination, source, draggableId } = result;
 
-    // 1. If dropped outside a list or in the same spot, do nothing
     if (!destination) return;
     if (
       destination.droppableId === source.droppableId &&
@@ -109,8 +107,6 @@ function Board() {
       return;
     }
 
-    // 2. Optimistic UI Update: Move the card in our local state immediately
-    // draggableId is the card's ID
     const updatedCards = cards.map((card) =>
       card.id.toString() === draggableId
         ? { ...card, status: destination.droppableId }
@@ -119,25 +115,17 @@ function Board() {
 
     dispatch({ type: "setCards", payload: updatedCards });
 
-    // 3. Persist to Database
     try {
-      // destination.droppableId is the new column ID (e.g., 'testing')
       await updateCard(draggableId, { status: destination.droppableId });
-
-      // Note: Your Python backend should emit "card_updated" via Socket.IO
-      // once this update is successful.
     } catch (err) {
       console.error("Failed to update card status:", err);
-      // Optional: you could re-fetch cards here to 'roll back' the UI if the save fails
     }
   };
 
-  // 1. Guard for no board selected
   if (!activeBoard) {
     return <Home />;
   }
 
-  // 2. Loading state (only show if we don't have cards yet)
   if (status === "loading" && cards.length === 0) {
     return (
       <div className={styles.boardContainer}>
@@ -255,11 +243,11 @@ function Board() {
                 : "Leave Board"
             }
             isDanger={true}
-            errorMessage={deleteError} // New Prop
+            errorMessage={deleteError}
             onConfirm={handleDeleteConfirm}
             onCancel={() => {
               setShowConfirm(false);
-              setDeleteError(""); // Reset error when they close it
+              setDeleteError("");
             }}
           />
         )}

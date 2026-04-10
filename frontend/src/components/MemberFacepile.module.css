@@ -1,15 +1,14 @@
-/* frontend/src/components/MemberFacepile.module.css */
 .facepile {
   display: flex;
   align-items: center;
-  flex-direction: row-reverse; /* Leftmost member stays on top */
+  flex-direction: row-reverse;
   justify-content: flex-end;
 }
 
 .avatarWrapper {
-  margin-left: -10px; /* Overlap effect */
+  margin-left: -10px;
   border-radius: 50%;
-  border: 2px solid var(--bg-main); /* Cut-out effect */
+  border: 2px solid var(--bg-main);
   transition: transform 0.2s ease;
 }
 

@@ -1,4 +1,3 @@
-// frontend/src/components/MemberFacepile.jsx
 import React from "react";
 import { useBoards } from "../context/BoardContext";
 import UserAvatar from "./UserAvatar";
@@ -31,7 +30,6 @@ const MemberFacepile = ({ members = [], owner }) => {
               name={
                 person.full_name || `${person.first_name} ${person.last_name}`
               }
-              // 3. If it's me, force it to true. If not, use the timestamp math.
               isActive={isMe ? true : isUserActive(person.last_seen)}
               size={28}
             />

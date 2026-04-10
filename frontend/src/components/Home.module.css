@@ -6,8 +6,6 @@
   color: var(--text-primary);
 }
 
-/* --- HEADER & DATE --- */
-
 .header {
   margin-bottom: 2.5rem;
   position: relative;
@@ -30,7 +28,6 @@
   opacity: 0.8;
 }
 
-/* MISSION CONTROL PULSE */
 .pulse {
   display: inline-block;
   width: 10px;
@@ -56,8 +53,6 @@
     transform: scale(1);
   }
 }
-
-/* --- STAT CARDS --- */
 
 .statsGrid {
   display: flex;
@@ -109,18 +104,15 @@
   font-weight: 700;
 }
 
-/* COLOR LOGIC FOR STATS */
 .statCard[data-type="total"] .statValue {
-  color: #ff007f; /* Neon Magenta */
+  color: #ff007f;
   text-shadow: 0 0 20px rgba(255, 0, 127, 0.3);
 }
 
 .statCard[data-type="completed"] .statValue {
-  color: #39ff14; /* Neon Green */
+  color: #39ff14;
   text-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
 }
-
-/* --- BENTO GRID --- */
 
 .bentoGrid {
   display: grid;
@@ -156,7 +148,6 @@
   padding-right: 5px;
 }
 
-/* Custom internal scrollbar for widgets */
 .widgetContent::-webkit-scrollbar {
   width: 4px;
 }
@@ -165,7 +156,6 @@
   border-radius: 10px;
 }
 
-/* 4th Widget Styling (Quick Links) */
 .shortcutGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -191,8 +181,6 @@
   color: var(--accent-cyan);
   transform: translateY(-2px);
 }
-
-/* --- CARDS & HEALTH BARS --- */
 
 .cardTitle {
   font-weight: 500;
@@ -232,7 +220,7 @@
 
 .progressFill {
   height: 100%;
-  background: #39ff14; /* Neon Green for completion */
+  background: #39ff14;
   box-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -256,7 +244,6 @@
   transform: translateX(4px);
 }
 
-/* MISSION CONTROL GLOBAL SCROLLBAR */
 .container::-webkit-scrollbar {
   width: 8px;
 }

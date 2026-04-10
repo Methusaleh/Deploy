@@ -50,7 +50,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   const [saveStatus, setSaveStatus] = useState("idle");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- Comment & Autocomplete State ---
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
@@ -83,12 +82,10 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     fetchComments();
   }, [selectedCard.id, isNew]);
 
-  // --- Handlers ---
   const handleInputChange = async (e) => {
     const value = e.target.value;
     setCommentText(value);
 
-    // Detect if user is typing a mention
     const words = value.split(/\s/);
     const lastWord = words[words.length - 1];
 
@@ -118,7 +115,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
 
   const applyMention = (userHandle) => {
     const words = commentText.split(" ");
-    words.pop(); // Remove partial handle
+    words.pop();
     setCommentText([...words, userHandle, ""].join(" "));
     setShowSuggestions(false);
 
@@ -235,7 +232,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
   return (
     <div className={styles.content}>
       <span className={styles.statusBadge}>{selectedCard.status}</span>
-      {/* 1. Only Assignee and Due Date go in the 2-column grid */}
       <div className={styles.metaRow}>
         <div className={styles.editGroup}>
           <label className={styles.label}>Assignee</label>
@@ -263,8 +259,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
           />
         </div>
       </div>{" "}
-      {/* <--- CLOSE METAROW HERE */}
-      {/* 2. Everything else stacks vertically outside the grid */}
       <div className={styles.editGroup}>
         <label className={styles.label}>Priority</label>
         <select
@@ -351,7 +345,6 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
                 {suggestions.map((user, index) => (
                   <div
                     key={user.id}
-                    // Dynamically apply the active class based on selectedIndex
                     className={`${styles.suggestionItem} ${index === selectedIndex ? styles.activeSuggestion : ""}`}
                     onClick={() => applyMention(user.handle)}
                   >

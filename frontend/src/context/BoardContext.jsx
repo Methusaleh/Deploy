@@ -12,24 +12,20 @@ const initialState = {
   status: "idle", // 'idle' | 'loading' | 'ready' | 'error'
   cards: [],
   selectedCard: null,
-  isAuthenticated: !!localStorage.getItem("token"), // Check for token on startup
+  isAuthenticated: !!localStorage.getItem("token"),
   userData: null,
 };
 
 export const isUserActive = (lastSeen) => {
   if (!lastSeen) return false;
 
-  // Ensure we append 'Z' if it's missing to force UTC parsing
   const formattedLastSeen = lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`;
   const lastSeenDate = new Date(formattedLastSeen);
   const now = new Date();
 
   const diffInSeconds = Math.floor((now - lastSeenDate) / 1000);
 
-  // Log this once to your console to see the actual gap
-  // console.log(`User saw ${diffInSeconds} seconds ago`);
-
-  return diffInSeconds < 60; // Active if seen in the last minute
+  return diffInSeconds < 60;
 };
 
 function reducer(state, action) {
@@ -68,13 +64,11 @@ function reducer(state, action) {
         ...state,
         activeBoard: {
           ...state.activeBoard,
-          // Update members list
           members: state.activeBoard.members.map((m) =>
             m.id === action.payload.user_id
               ? { ...m, last_seen: action.payload.last_seen }
               : m,
           ),
-          // Update owner if applicable
           owner:
             state.activeBoard.owner?.id === action.payload.user_id
               ? {
@@ -100,7 +94,6 @@ function BoardProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    // Only fetch if we are actually logged in
     if (state.isAuthenticated) {
       async function loadBoards() {
         dispatch({ type: "loading" });
@@ -114,17 +107,15 @@ function BoardProvider({ children }) {
       }
       loadBoards();
     }
-  }, [state.isAuthenticated]); // This trigger is the magic part
+  }, [state.isAuthenticated]);
 
-  // --- EFFECT 2: Join a Socket.IO Room when the board changes ---
   useEffect(() => {
     if (state.activeBoard?.id) {
       socket.emit("join_board", state.activeBoard.id);
       console.log(`Requested to join room: ${state.activeBoard.id}`);
     }
-  }, [state.activeBoard?.id]); // Runs every time the ID changes
+  }, [state.activeBoard?.id]);
 
-  // --- EFFECT: Join Private User Room for Notifications ---
   useEffect(() => {
     if (state.isAuthenticated && state.userData?.id) {
       socket.emit("join_user_room", state.userData.id);
@@ -132,11 +123,10 @@ function BoardProvider({ children }) {
         `Joined private notification room: user_${state.userData.id}`,
       );
 
-      // Helper to send the heartbeat with current board context
       const sendPulse = () => {
         socket.emit("heartbeat", {
           user_id: state.userData.id,
-          board_id: state.activeBoard?.id, // Added this
+          board_id: state.activeBoard?.id,
         });
         console.log("Heartbeat pulsed");
       };
@@ -146,11 +136,9 @@ function BoardProvider({ children }) {
 
       return () => clearInterval(heartbeatInterval);
     }
-    // Added activeBoard?.id here so the heartbeat updates immediately if you switch boards
   }, [state.isAuthenticated, state.userData?.id, state.activeBoard?.id]);
 
   useEffect(() => {
-    // --- 1. UPDATE LISTENER ---
     socket.on("card_updated", (updatedCard) => {
       console.log("Real-time update received!", updatedCard);
 
@@ -162,31 +150,21 @@ function BoardProvider({ children }) {
       }
     });
 
-    // --- 2. DELETE LISTENER ---
     socket.on("card_deleted", (deletedData) => {
       console.log("Card deleted in real-time!", deletedData);
-
-      // We don't need a board_id check here if the ID is unique,
-      // but it doesn't hurt to keep things scoped.
       const nextCards = state.cards.filter((c) => c.id !== deletedData.id);
       dispatch({ type: "setCards", payload: nextCards });
     });
 
-    // 3. NEW: Listen for Creations
     socket.on("card_created", (newCard) => {
       console.log("New card created in real-time!", newCard);
       if (state.activeBoard && newCard.board_id === state.activeBoard.id) {
-        // Add the new card to our current list
         dispatch({ type: "setCards", payload: [...state.cards, newCard] });
       }
     });
 
-    // 4. NEW: Listen for Invitations/Notifications
     socket.on("new_notification", (notif) => {
       console.log("New notification received!", notif);
-      // Here you can trigger a dispatch to update an 'unread' count
-      // or just let the UserMenu fetch the latest list.
-      // dispatch({ type: "addNotification", payload: notif });
     });
 
     socket.on("refresh_boards", async () => {
@@ -203,7 +181,6 @@ function BoardProvider({ children }) {
       dispatch({ type: "updateUserPresence", payload: data });
     });
 
-    // --- 4. CLEANUP (Runs when component unmounts or dependencies change) ---
     return () => {
       socket.off("card_updated");
       socket.off("card_deleted");

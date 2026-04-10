@@ -1,6 +1,6 @@
 .card {
   position: relative;
-  background-color: #1c1c1c; /* Using your specific card background  */
+  background-color: #1c1c1c;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   cursor: pointer;
@@ -12,7 +12,6 @@
   min-height: 100px;
 }
 
-/* Premium Hover: Subtle lift and shadow pulse */
 .card:hover {
   border-color: #444;
   transform: translateY(-2px);
@@ -28,7 +27,7 @@
 .description {
   font-size: 0.85rem;
   color: var(--text-secondary);
-  line-height: 1.5; /* Better readability */
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -50,14 +49,13 @@
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-/* Neon Priority Accents using the variables from index.css */
 .high {
-  color: #ff007f; /* Magenta */
+  color: #ff007f;
   box-shadow: inset 0 0 4px rgba(255, 0, 127, 0.2);
 }
 
 .medium {
-  color: #39ff14; /* Neon Green */
+  color: #39ff14;
   box-shadow: inset 0 0 4px rgba(57, 255, 20, 0.2);
 }
 
@@ -72,12 +70,12 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  z-index: 1; /* Ensures it stays above the card background but below text if overlapped */
+  z-index: 1;
 }
 
 .high .priorityBar {
   background-color: #ff007f;
-  box-shadow: 2px 0 12px rgba(255, 0, 127, 0.4); /* Stronger 'edge' glow */
+  box-shadow: 2px 0 12px rgba(255, 0, 127, 0.4);
 }
 
 .medium .priorityBar {
@@ -91,22 +89,20 @@
 }
 
 .content {
-  padding: 1.2rem 1.2rem 1.2rem 1.8rem; /* Extra left padding (1.8rem) clears the 4px bar */
+  padding: 1.2rem 1.2rem 1.2rem 1.8rem;
 }
 
 .dragging {
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
   border-color: var(--accent-cyan) !important;
-  transform: rotate(2deg); /* Gives it that 'picked up' feel */
+  transform: rotate(2deg);
 }
-
-/* --- FOOTER & META INFO --- */
 
 .cardFooter {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 1rem; /* Space between description and footer */
+  margin-top: 1rem;
   padding-top: 0.8rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -136,7 +132,6 @@
 .assigneeAvatar {
   display: flex;
   align-items: center;
-  /* Adds a subtle ring to the avatar to make it pop against the card bg */
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
   padding: 1px;
