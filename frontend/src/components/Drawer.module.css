@@ -258,6 +258,11 @@
   color: var(--text-primary);
 }
 
+.commentFormWrapper {
+  position: relative;
+  margin-top: auto; /* Keeps it at the bottom */
+}
+
 .commentForm {
   display: flex;
   gap: 8px;
@@ -291,4 +296,49 @@
 .commentForm button:not(:disabled) {
   background: var(--accent-cyan);
   color: #000;
+}
+
+.suggestionList {
+  position: absolute;
+  /* Use 'bottom: 100%' to make it pop up ABOVE the input box */
+  /* Or use 'top: 100%' to make it drop DOWN below it */
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  background-color: #222; /* Match your dark theme */
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.5);
+  z-index: 10000; /* Higher than the drawer itself */
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 8px; /* Space between list and input */
+}
+
+.suggestionItem {
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.suggestionItem:last-child {
+  border-bottom: none;
+}
+
+.suggestionItem:hover,
+.activeSuggestion {
+  background-color: rgba(0, 245, 255, 0.1);
+}
+
+.suggestName {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggestHandle {
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
 }
