@@ -18,6 +18,8 @@ npm-debug.log*
 # Snapshots & Bundles
 deploy_snapshot.txt
 frontend_snapshot.txt
+bundle.py
+bundle_frontend.py
 
 # IDE Settings
 .vscode/
