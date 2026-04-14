@@ -82,6 +82,18 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
     fetchComments();
   }, [selectedCard.id, isNew]);
 
+  useEffect(() => {
+    if (showSuggestions && suggestions.length > 0) {
+      const activeItem = document.querySelector(`.${styles.activeSuggestion}`);
+      if (activeItem) {
+        activeItem.scrollIntoView({
+          block: "nearest",
+          inline: "start",
+        });
+      }
+    }
+  }, [selectedIndex, showSuggestions, suggestions.length]);
+
   const handleInputChange = async (e) => {
     const value = e.target.value;
     setCommentText(value);
@@ -347,6 +359,7 @@ function DrawerContent({ selectedCard, cards, dispatch, activeBoard }) {
                     key={user.id}
                     className={`${styles.suggestionItem} ${index === selectedIndex ? styles.activeSuggestion : ""}`}
                     onClick={() => applyMention(user.handle)}
+                    onMosueEnter={() => setSelectedIndex(index)}
                   >
                     <span className={styles.suggestName}>
                       {user.first_name} {user.last_name}
